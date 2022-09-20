@@ -13,8 +13,8 @@ def test_instantiations(client=None):
 
 def test_instantiations2(client=None):
     c = hc.Catalog('sdss_test')
-    #c.hips_import(file_source='/epyc/data/sdss_parquet/', fmt='parquet', ra_kw='RA', dec_kw='DEC', 
-    #    id_kw='ID', debug=False, verbose=True, threshold=1_000_000, client=client, limit=10)
+    c.hips_import(file_source='/epyc/data/sdss_parquet/', fmt='parquet', ra_kw='RA', dec_kw='DEC', 
+        id_kw='ID', debug=True, verbose=True, threshold=1_000_000, client=client, limit=10)
 
 def test_instantiations3(client=None):
     c = hc.Catalog('des_y1a1_gold')
@@ -41,8 +41,8 @@ def test_instantiations5(client=None):
 
 if __name__ == '__main__':
     import time
-    client = Client(n_workers=4, threads_per_worker=1)
-    #client=None
+    #client = Client(n_workers=4, threads_per_worker=1)
+    client=None
     s = time.time()
     test_instantiations2(client=client)
     e = time.time()
