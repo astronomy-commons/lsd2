@@ -3,7 +3,8 @@
 
 import healpy as hp
 import pandas as pd
-import os, os.path
+import os
+import os.path
 from tqdm import tqdm
 
 from . import catalog
@@ -12,10 +13,12 @@ from . import partitioner
 Catalog = catalog.Catalog
 Partitioner = partitioner.Partitioner
 
+
 def pix2subdir(k, pix):
     # return a healpix subdirectory for the given order and pixel number
     # FIXME: turn this into a proper docstring
     return f'Norder{k}/Npix{pix}'
+
 
 def _to_hips(df, hipsPath):
     # WARNING: only to be used from df2hips(); it's defined out here just for debugging
@@ -25,12 +28,12 @@ def _to_hips(df, hipsPath):
     # is intented to be called with apply() after running groupby on (k, pix), these must
     # be the same throughout the entire dataframe
     k, pix = df['hips_k'].iloc[0],  df['hips_pix'].iloc[0]
-    assert (df['hips_k']   ==   k).all()
+    assert (df['hips_k'] == k).all()
     assert (df['hips_pix'] == pix).all()
 
     # construct the output directory and filename
     dir = os.path.join(hipsPath, pix2subdir(k, pix))
-    fn  = os.path.join(dir, 'catalog.csv')
+    fn = os.path.join(dir, 'catalog.csv')
 
     # create dir if it doesn't exist
     os.makedirs(dir, exist_ok=True)
@@ -42,16 +45,19 @@ def _to_hips(df, hipsPath):
     # return the number of records written
     return len(df)
 
+
 def df2hips(hipsPath, df, k):
     # Dataframe-to-hips: write out a dataframe as a HiPS file of a given order
     # FIXME: rewrite this implementation so it doesn't modify the input dataframe
 
     # FIXME: write a proper docstring
     df['hips_k'] = k
-    df['hips_pix'] = hp.ang2pix(2**k, df['ra'].values, df['dec'].values, lonlat=True)
+    df['hips_pix'] = hp.ang2pix(
+        2**k, df['ra'].values, df['dec'].values, lonlat=True)
 
     # returns the number of records written to each HiPS file
     return df.groupby(['hips_k', 'hips_pix']).apply(_to_hips, hipsPath=hipsPath)
+
 
 def csv2hips(hipsPath, urls, k=5):
     """
@@ -83,10 +89,11 @@ def csv2hips(hipsPath, urls, k=5):
 
     return summary
 
+
 def main():
     # HACK: for quick tests, run python -m hipscat
-#    import glob
-#    urls = glob.glob('./gdr2/*.csv.gz')
+    #    import glob
+    #    urls = glob.glob('./gdr2/*.csv.gz')
 
     from .util import get_gaia_csv_urls
     urls = get_csv_urls()[:10]
