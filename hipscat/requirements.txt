@@ -1,0 +1,8 @@
+healpy
+pandas
+httplib2
+bs4
+tqdm
+requests
+ipython
+jupyter 
