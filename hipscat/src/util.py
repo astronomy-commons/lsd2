@@ -28,7 +28,7 @@ def get_csv_urls(url='https://cdn.gea.esac.esa.int/Gaia/gdr2/gaia_source/csv/', 
         status, response = http.request(url)
     except requests.exceptions.HTTPError as err:
         raise SystemExit(err)
-    
+
     csv_files = []
     for link in BeautifulSoup(response, parse_only=SoupStrainer('a'), features="html.parser"):
         if link.has_attr('href') and link['href'].endswith(fmt):

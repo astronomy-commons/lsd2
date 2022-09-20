@@ -13,7 +13,7 @@ def test_instantiations(client=None):
 
 def test_instantiations2(client=None):
     c = hc.Catalog('sdss_test')
-    #c.hips_import(file_source='/epyc/data/sdss_parquet/', fmt='parquet', ra_kw='RA', dec_kw='DEC', 
+    #c.hips_import(file_source='/epyc/data/sdss_parquet/', fmt='parquet', ra_kw='RA', dec_kw='DEC',
     #    id_kw='ID', debug=False, verbose=True, threshold=1_000_000, client=client, limit=10)
 
 def test_instantiations3(client=None):
@@ -27,7 +27,7 @@ def test_instantiations4(client=None):
         objects or time-series
     '''
     c = hc.Catalog('ztf_dr7')
-    c.hips_import(file_source='/data/epyc/projects/lsd2/pzwarehouse/ztf_dr7/', fmt='parquet', debug=True, 
+    c.hips_import(file_source='/data/epyc/projects/lsd2/pzwarehouse/ztf_dr7/', fmt='parquet', debug=True,
         ra_kw='ra', dec_kw='dec', id_kw='ps1_objid', verbose=True, threshold=250_000, limit=10, client=client)
 
 def test_instantiations5(client=None):
@@ -36,7 +36,7 @@ def test_instantiations5(client=None):
         objects or time-series
     '''
     c = hc.Catalog('ps1')
-    c.partition_from_source(file_source='/epyc/data/ps1_skinny/', fmt='csv.gz', debug=True, 
+    c.partition_from_source(file_source='/epyc/data/ps1_skinny/', fmt='csv.gz', debug=True,
         ra_kw=5, dec_kw=6, id_kw=0, verbose=True, threshold=250_000, limit=10, client=client)
 
 if __name__ == '__main__':

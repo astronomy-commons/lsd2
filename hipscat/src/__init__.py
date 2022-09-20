@@ -57,7 +57,7 @@ def csv2hips(hipsPath, urls, k=5):
     """
     Convert a list of URLs to CSV files (may be local files) to a HiPS file
     of a given order k.
-    
+
     :param hipsPath: the output HiPS directory
     :param urls: a list of URLs with GAIA .csv files
     :param k: Healpix order

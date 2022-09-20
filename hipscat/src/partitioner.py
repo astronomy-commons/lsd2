@@ -17,11 +17,11 @@ from . import dask_utils as du
 
 
 class Partitioner():
-    
+
     def __init__(self, catname, urls=[], fmt='csv', ra_kw='ra', dec_kw='dec', 
         id_kw='source_id',  order_k=5, output='output', cache='cache', 
         verbose=False, debug=False):
-        
+
         self.catname = catname
         self.urls = urls
         self.fmt = fmt
@@ -44,7 +44,7 @@ class Partitioner():
 
         self.set_cache_dir()
         self.set_output_dir()
-    
+
 
     def set_cache_dir(self):
         self.cache_dir = os.path.join(os.getcwd(), self.cache, self.catname)
@@ -79,7 +79,7 @@ class Partitioner():
         # k: healpix order of the counts map
         #
         # returns: img (self.order_k healpix map with object counts)
-        
+
         mapFn = os.path.join(self.cache_dir, f'{self.catname}_order{self.order_k}_hpmap.fits')
         if writeread_cache:
             if os.path.exists(mapFn):
@@ -88,28 +88,28 @@ class Partitioner():
                 except:
                     print('Warning. Error reading cached map. Attempting to re-calculate it')
                     self.img = None
-        
-        if self.img is None:   
+
+        if self.img is None:
             if self.verbose:
                 print(f'Caching input source catalogs into parquet files: {len(self.urls)} files')
 
             self.img = db.from_sequence(
                 self.urls,
                 partition_size=1
-            ).reduction( 
+            ).reduction(
                 partial(
-                    du._gather_statistics_hpix_hist, 
+                    du._gather_statistics_hpix_hist,
                         k=self.order_k, cache_dir=self.cache_dir, fmt=self.fmt,
                         ra_kw=self.ra_kw, dec_kw=self.dec_kw
-                    ), 
+                    ),
                 sum, split_every=3
             ).compute()
 
             if writeread_cache:
                 if self.verbose:
                     print(f'Saving source healpix map.')
-                hp.write_map(mapFn, self.img)        
-        
+                hp.write_map(mapFn, self.img)
+
         if self.debug:
             hp.mollview(np.log10(self.img+1), title=f'{self.img.sum():,.0f} sources', nest=True)
             plt.show()
@@ -155,7 +155,7 @@ class Partitioner():
         idx = np.arange(len(self.img))
         for o in range(0, k+1):
             # the number of order-k pixels that are in one order-o pixel.
-            # integer-dividing order-k pixel index (NEST scheme) with 
+            # integer-dividing order-k pixel index (NEST scheme) with
             # this value will return the order-o index it falls within.
             k2o = 4**(k-o)
 
@@ -182,7 +182,7 @@ class Partitioner():
                 orders[pixk] = o
                 if self.verbose:
                     print(o, np.count_nonzero(orders == -1), len(pixo))
-                 
+
 
         assert not (orders == -1).any()
         self.orders = orders
@@ -207,7 +207,7 @@ class Partitioner():
         #    order_partition_fd = os.path.join(dir, f'Norder{order}')
         #    if not os.path.exists(order_partition_fd):
         #        os.makedirs(order_partition_fd)
-        #    
+        #
         #    for pix in self.opix[order]:
         #        partition_pix_fd = os.path.join(order_partition_fd, f'Npix{pix}')
         #        if not os.path.exists(partition_pix_fd):
@@ -236,10 +236,10 @@ class Partitioner():
                 print(f'Order level {k}')
 
                 df['hips_k'] = k
-                df['hips_pix'] = hp.ang2pix(2**k, 
-                                            df[self.ra_kw].values, 
-                                            df[self.dec_kw].values, 
-                                            lonlat=True, 
+                df['hips_pix'] = hp.ang2pix(2**k,
+                                            df[self.ra_kw].values,
+                                            df[self.dec_kw].values,
+                                            lonlat=True,
                                             nest=True
                                             )
 
@@ -263,7 +263,7 @@ class Partitioner():
 
                 if self.verbose:
                     print(f'Found n sources {len(order_df)}')
-                
+
                 audit_counts[k].append(len(order_df))
 
                 #reset the df so that it doesn't include the already partitioned sources
@@ -277,11 +277,11 @@ class Partitioner():
 
                 #groups the sources in order_k pixels, then outputs them to the base_filename sources
                 ret = order_df.groupby(['hips_k', 'hips_pix']).apply(
-                        du._to_hips, 
-                        hipsPath=self.output_dir, 
+                        du._to_hips,
+                        hipsPath=self.output_dir,
                         base_filename=base_filename
                 )
-                
+
                 if self.verbose:
                     print()
 
@@ -366,7 +366,7 @@ class Partitioner():
             pfiles.append(os.path.join(self.cache_dir, base_filename + '.parquet'))
 
         futures = client.map(
-            du._write_partition_structure, pfiles, 
+            du._write_partition_structure, pfiles,
             cache_dir=self.cache_dir,
             output_dir=self.output_dir,
             orders=orders,
@@ -392,7 +392,7 @@ class Partitioner():
             npixs = os.listdir(os.path.join(self.output_dir, k))
             for pix in npixs:
                 pix_directories.append(os.path.join(self.output_dir, k, pix))
-        
+
         futures = client.map(du._map_reduce, pix_directories)
         progress(futures)
 
@@ -402,7 +402,7 @@ if __name__ == '__main__':
     s = time.time()
     ###
     #urls = glob.glob('/epyc/data/gaia_edr3_csv/*.csv.gz')[:10]
-    
+
     urls = glob.glob('/epyc/data/sdss_parquet/*.parquet')[:10]
     imp = Partitioner(catname='sdss', urls=urls, order_k=10, verbose=True, debug=True)
     imp.gather_statistics()
@@ -410,7 +410,7 @@ if __name__ == '__main__':
     plt.show()
     imp.compute_partitioning_map(max_counts_per_partition=1_000_000)
     hp.mollview(imp.orders, title=f'partitions', nest=True)
-    plt.show() 
+    plt.show()
 
     #paraleleleize these functions!
     #imp.write_partitioned_structure()

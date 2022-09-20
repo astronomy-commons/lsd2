@@ -10,24 +10,24 @@ from . import partitioner as pt
 
 '''
 
-user experience: 
+user experience:
 
     from hipscat import catalog as cat
     gaia = cat.Catalog('gaia')
 
     -> checks in source location for the 'hierarchical formatted data'
-    
+
     -> if it isn't located in source notify user that the catalog must be formatted
 
     -> local formatting gaia.hips_import(dir='/path/to/catalog/', fmt='csv.gz') [1]
         this outputs to local directory: output/ (crib mario's code for gaia 1st 10 files)
 
-    
+
 '''
 class Catalog():
 
     def __init__(self, catname='gaia', source='local'):
-        
+
         self.catname = catname
         self.source = source
         self.hierarchical_format = None
@@ -93,14 +93,14 @@ class Catalog():
 
         if len(urls):
             self.partitioner = pt.Partitioner(catname=self.catname, fmt=fmt, urls=urls, id_kw=id_kw,
-                        order_k=10, verbose=verbose, debug=debug, ra_kw=ra_kw, dec_kw=dec_kw)     
+                        order_k=10, verbose=verbose, debug=debug, ra_kw=ra_kw, dec_kw=dec_kw)
 
             if debug:
                 self.partitioner.gather_statistics()
                 self.partitioner.compute_partitioning_map(max_counts_per_partition=threshold)
             else:
                 self.partitioner.run(client=client, threshold=threshold)
-            
+
         else:
             print('No files Found!')
 
@@ -122,4 +122,3 @@ if __name__ == '__main__':
     ###
     e = time.time()
     print("Elapsed time: {}".format(e-s))
-    
