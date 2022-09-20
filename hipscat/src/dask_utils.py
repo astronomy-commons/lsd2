@@ -33,7 +33,7 @@ def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw):
                 df = dat.to_pandas()
             else:
                 sys.exit('File Format not implemented')
-            
+
             # cache it to a parquet file
             df.to_parquet(parqFn)
         else:
@@ -72,7 +72,7 @@ def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, 
         df['hips_pix'] = hp.ang2pix(2**k, df[ra_kw].values, df[dec_kw].values, lonlat=True, nest=True)
 
         order_df = df.loc[df['hips_pix'].isin(opix[k])]
-        
+
         #audit_counts[k].append(len(order_df))
 
         #reset the df so that it doesn't include the already partitioned sources
@@ -81,7 +81,7 @@ def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, 
 
         #groups the sources in order_k pixels, then outputs them to the base_filename sources
         ret = order_df.groupby(['hips_k', 'hips_pix']).apply(_to_hips, hipsPath=output_dir, base_filename=base_filename)
-        
+
         del order_df
         if len(df) == 0:
             break
@@ -94,7 +94,7 @@ def _map_reduce(output_dir):
     #for output_dir in output_dirs:
 
     dfs = []
-    files = os.listdir(os.path.join(output_dir))    
+    files = os.listdir(os.path.join(output_dir))
     if len(files) == 1:
         fn = os.path.join(output_dir, files[0])
         df = pd.read_parquet(fn, engine='pyarrow')
@@ -190,17 +190,17 @@ if __name__ == '__main__':
     #y = delayed(_map_reduce2)(
     #    pix=pix, output_dir=newd
     #)
-    
+
     #print(len(results))
     #results = dask.compute(*results)
 
 
-    #reduction( 
+    #reduction(
     #            partial(
-    #                du._gather_statistics_hpix_hist, 
+    #                du._gather_statistics_hpix_hist,
     #                    k=self.order_k, cache_dir=self.cache_dir, fmt=self.fmt,
     #                    ra_kw=self.ra_kw, dec_kw=self.dec_kw
-    #                ), 
+    #                ),
     #            sum, split_every=3
 
     #tt = [delayed(_map_reduce)(parts=os.listdir(os.path.join(td, k)), output_dir=td, k=k) for k in orders]
