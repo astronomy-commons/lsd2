@@ -1,7 +1,7 @@
 """Catalog instantiations that test import of several known data sets on epyc data server"""
 
 from dask.distributed import Client
-import ..hipscat as hc
+import hipscat as hc
 import sys
 sys.path.insert(0, '../')
 
@@ -46,6 +46,6 @@ if __name__ == '__main__':
     client = Client(n_workers=4, threads_per_worker=1)
     #client=None
     s = time.time()
-    test_instantiations2(client=client)
+    test_instantiations(client=client)
     e = time.time()
     print(f'Elapsed Time: {e-s}')
