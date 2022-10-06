@@ -124,7 +124,7 @@ class Catalog():
         '''
 
         assert othercat is not None, 'Must specify another catalog to crossmatch with.'
-        assert isinstance(othercat, Catalog), 'The other catalog must be an instance of hipcat.Catalog.'
+        assert isinstance(othercat, Catalog), 'The other catalog must be an instance of hipscat.Catalog.'
 
         cat1_md = self.hips_metadata
         cat2_md = othercat.hips_metadata
@@ -133,7 +133,7 @@ class Catalog():
                 cat2_md['hips'], othercat.output_dir)
 
         if debug:
-            hp_xmatch_map = hp_xmatch_map
+            hp_xmatch_map = hp_xmatch_map[:5]
             print(hp_xmatch_map)
         
         if client:

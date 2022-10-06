@@ -13,9 +13,10 @@ def download_gaia(client=None):
         id_kw='source_id', debug=False, verbose=True, threshold=1_000_000, client=client)
 
 def download_sdss(client=None):
-    c = hc.Catalog('sdss_real', location='/epyc/projects3/sam_hipscat/')
+    c = hc.Catalog('sdss_test', location='/epyc/projects3/sam_hipscat/')
     c.hips_import(file_source='/epyc/data/sdss_parquet/', fmt='parquet',
-        ra_kw='RA', dec_kw='DEC', id_kw='ID', debug=True, verbose=True, threshold=1_000_000, client=client)
+        ra_kw='RA', dec_kw='DEC', id_kw='ID', debug=False, verbose=True, threshold=1_000_000, 
+        limit=5, client=client)
 
 def download_des(client=None):
     c = hc.Catalog('des_y1a1_gold', location='/epyc/projects3/sam_hipscat/')
@@ -43,18 +44,16 @@ def download_ps1(client=None):
 
 
 def xmatch(client=None):
-    c1 = hc.Catalog('des_y1a1_gold')
+    c1 = hc.Catalog('sdss_test')
     c2 = hc.Catalog('gaia_real')
-    c1.cross_match(c2, client=client, debug=True)
+    c1.cross_match("None", client=client, debug=True)
 
 if __name__ == '__main__':
     import time
     client = Client(local_directory='/epyc/projects3/sam_hipscat/', n_workers=48, threads_per_worker=1)
     #client=None
     s = time.time()
-    download_des(client=client)
-    #xmatch(client=client)
-    #test_instantiations(client=client)
-    #test_instantiations2(client=client)
+    #download_sdss(client=client)
+    xmatch(client=client)
     e = time.time()
     print(f'Elapsed Time: {e-s}')

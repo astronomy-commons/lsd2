@@ -52,8 +52,7 @@ def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw):
             dec_kw = df.keys()[dec_kw]
 
         # test if the ra, dec keywords are in the file columns
-        assert all([x in df.columns for x in [ra_kw, dec_kw]]), 
-            f'Invalid spatial keywords in catalog file. {ra_kw}, {dec_kw} not in {fn}'
+        assert all([x in df.columns for x in [ra_kw, dec_kw]]), f'Invalid spatial keywords in catalog file. {ra_kw}, {dec_kw} not in {fn}'
 
         # compute our part of the counts map
         hpix = hp.ang2pix(2**k, df[ra_kw].values, df[dec_kw].values, lonlat=True, nest=True)

@@ -35,7 +35,7 @@ class Partitioner():
         self.output = output
         self.order_k = order_k
         self.verbose = verbose
-        self.debug = 
+        self.debug = debug
         
         self.img = None
         self.orders = None
@@ -75,6 +75,8 @@ class Partitioner():
             self.write_partitioned_structure_wdask(client=client)
             self.structure_map_reduce_wdask(client=client)
         else:
+            print('Warning. This will potentially take a long time')
+            print('Highly suggest constructing a distributed dask client')
             self.write_partitioned_structure()
             self.structure_map_reduce()
         self.write_structure_metadata()

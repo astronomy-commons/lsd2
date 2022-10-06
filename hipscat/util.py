@@ -44,9 +44,8 @@ def map_pixel_at_order(pixel, order, _map):
               
         2.) if the map_order < order:
             there potentially exists map_orders' pixels at greater orders
-            We bitshift << each pixel to the input order and create a range 
-            of [low,high]. We test if the input pixel is within that range,
-            and append the map_order pixel to our return dictionary
+            We bitshift >> the input pixel to the order we are iterating over
+            and test if catalogs' pixels equal the shifted comparison pixel
         
         3.) if the map_order > order:
             there potentially exists map_pixels' pixels at lesser orders.
@@ -176,7 +175,6 @@ def get_csv_urls(url='https://cdn.gea.esac.esa.int/Gaia/gdr2/gaia_source/csv/', 
 if __name__ == '__main__':
     import time
     s = time.time()
-    c1 = {'0': [0, 1, 2, 3], '1': [1, 2, 3], '2': [0, 2], '3': [4, 5, 6, 7, 12, 13, 14, 15]}
-    construct_1dmap_from_bottom(c1, 5)
+    #TESTs
     e = time.time()
     print(f'Elapsed time: {e-s}')
