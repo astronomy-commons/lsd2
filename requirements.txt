@@ -1,7 +1,6 @@
 astropy==4.3.1
 beautifulsoup4==4.11.1
 bs4==0.0.1
-certifi @ file:///croot/certifi_1665076670883/work/certifi
 charset-normalizer==2.1.1
 click==8.1.3
 cloudpickle==2.2.0
@@ -12,7 +11,6 @@ fonttools==4.37.4
 fsspec==2022.8.2
 healpy==1.16.1
 HeapDict==1.0.1
-hipscat-config==0.0.0
 httplib2==0.20.4
 idna==3.4
 importlib-metadata==5.0.0

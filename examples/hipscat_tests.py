@@ -1,11 +1,10 @@
 """Catalog instantiations that test import of several known data sets on epyc data server"""
 
-from dask.distributed import Client
-import hipscat as hc
 import sys
 sys.path.insert(0, '../')
-
 import hipscat as hc
+from dask.distributed import Client
+
 
 def download_gaia(client=None):
     c = hc.Catalog('gaia_real', location='/epyc/projects3/sam_hipscat/')
@@ -46,7 +45,7 @@ def download_ps1(client=None):
 def xmatch(client=None):
     c1 = hc.Catalog('sdss_test')
     c2 = hc.Catalog('gaia_real')
-    c1.cross_match("None", client=client, debug=True)
+    c1.cross_match(c2, client=client, debug=True)
 
 if __name__ == '__main__':
     import time
