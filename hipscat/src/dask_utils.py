@@ -15,6 +15,9 @@ from astropy.table import Table
 from functools import partial
 from dask.distributed import Client, progress
 from dask.delayed import delayed
+from sklearn.neighbors import KDTree
+
+from . import util
 
 
 def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw):
@@ -32,7 +35,8 @@ def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw):
                 dat = Table.read(fn, format='fits')
                 df = dat.to_pandas()
             else:
-                sys.exit('File Format not implemented')
+                sys.exit(f'File Format: {fmt} not implemented! \
+                Supported formats are currently: csv, csv.gz, parquet, and fits')
 
             # cache it to a parquet file
             df.to_parquet(parqFn)
@@ -46,6 +50,10 @@ def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw):
         if all([isinstance(x, int) for x in [ra_kw, dec_kw]]):
             ra_kw = df.keys()[ra_kw]
             dec_kw = df.keys()[dec_kw]
+
+        # test if the ra, dec keywords are in the file columns
+        assert all([x in df.columns for x in [ra_kw, dec_kw]]), 
+            f'Invalid spatial keywords in catalog file. {ra_kw}, {dec_kw} not in {fn}'
 
         # compute our part of the counts map
         hpix = hp.ang2pix(2**k, df[ra_kw].values, df[dec_kw].values, lonlat=True, nest=True)
@@ -146,6 +154,85 @@ def _to_hips(df, hipsPath, base_filename):
 
     # return the number of records written
     return len(df)
+
+
+def _xmatch_mapper(c1_df, ):
+    pass
+
+
+def _cross_match(match_cats, c1_md, c2_md, n_neighbors=1, dthresh=4.0):
+    #input is an array
+    #   match_cats[0] is the pathway to the c1/catalog.parquet
+    #   match cats[1] is the pathway to the c2/catalog.parquet
+
+    c1 = match_cats[0]
+    c2 = match_cats[1]
+
+    #read parquet files
+    c1_df = pd.read_parquet(c1, engine='pyarrow')
+    c2_df = pd.read_parquet(c2, engine='pyarrow')
+
+    c1_order = int(c1.split('Norder')[1].split('/')[0])
+    c1_pix = int(c1.split('Npix')[1].split('/')[0])
+    c2_order = int(c2.split('Norder')[1].split('/')[0])
+    c2_pix = int(c2.split('Npix')[1].split('/')[0])
+
+    if c1_order > c2_order:
+        order, pix = c1_order, c1_pix
+        #cull the c2 sources
+        c2_df['hips_pix'] = hp.ang2pix(2**order, 
+            c2_df[c2_md['ra_kw']].values, 
+            c2_df[c2_md['dec_kw']].values, 
+            lonlat=True, nest=True
+        )
+        c2_df = c2_df.loc[c2_df['hips_pix'] == pix]
+        
+    else:
+        order, pix = c2_order, c2_pix
+        #cull the c1 sources
+        c1_df['hips_pix'] = hp.ang2pix(2**order, 
+            c1_df[c1_md['ra_kw']].values, 
+            c1_df[c1_md['dec_kw']].values, 
+            lonlat=True, nest=True
+        )
+        c1_df = c1_df.loc[c1_df['hips_pix'].isin([pix])]
+
+    #print(len(c2_df), len(c1_df))
+
+    # find the ra/dec of the smaller pixel (the one at highest order)
+    (clon, clat) = hp.pix2ang(hp.order2nside(order), pix, nest=True, lonlat=True)
+
+    #get id, ra, and dec columns
+    id2 = c2_df[c2_md['id_kw']].to_list()
+    ra2 = c2_df[c2_md['ra_kw']].to_list()
+    dec2 = c2_df[c2_md['dec_kw']].to_list()
+    xy2 = np.column_stack(util.gnomonic(ra2, dec2, clon, clat))
+    tree = KDTree(xy2, leaf_size=2)
+
+    matches = {}
+
+    #TODO.. not this! dataframe.apply()!
+    for id1, ra1, dec1 in zip(c1_df[c1_md['id_kw']], c1_df[c1_md['ra_kw']], c1_df[c1_md['dec_kw']]):
+        xy1 = np.column_stack(util.gnomonic(ra1, dec1, clon, clat))
+        dists, inds = tree.query(xy1, k=min(n_neighbors, len(xy2))) 
+
+        c1matches = []
+        for k,match_idx in enumerate(inds[0]):
+            match = {}
+            match['_M1'] = id1
+            match['_M2'] = id2[match_idx]
+            match['_DIST'] = util.gc_dist(ra1, dec1, ra2[match_idx], dec2[match_idx])
+            match['_LON'] = ra2[match_idx]
+            match['_LAT'] = dec2[match_idx]
+            match['_NR'] = k
+            c1matches.append(match)
+
+        c1matches = [c1m for c1m in c1matches if c1m['_DIST'] <= dthresh]
+        if c1matches:
+            matches[id1] = c1matches
+
+    return len(matches)
+
 
 
 if __name__ == '__main__':

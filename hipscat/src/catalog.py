@@ -1,8 +1,10 @@
 import os
 import sys
 import glob
+import json
 
 from dask.distributed import Client, progress
+from collections import Counter
 
 from . import util
 from . import dask_utils as du
@@ -26,23 +28,32 @@ user experience:
 '''
 class Catalog():
 
-    def __init__(self, catname='gaia', source='local'):
+    def __init__(self, catname='gaia', source='local', location='/epyc/projects3/sam_hipscat/'):
 
         self.catname = catname
         self.source = source
-        self.hierarchical_format = None
+        self.hips_metadata = None
         self.partitioner = None
+        self.output_dir = None
+        self.location = location
 
         if self.source == 'local':
-            output_dir = os.path.join(os.getcwd(), 'output', self.catname)
-            if not os.path.exists(output_dir):
+            self.output_dir = os.path.join(self.location, 'output', self.catname)
+            if not os.path.exists(self.output_dir):
                 print('No local hierarchal catalog exists, run catalog.hips_import(file_source=\'/path/to/file_or_files\', fmt=\'csv.gz\')')
             else:
-                print('Found partitioned catalog!')
-                #TODO: implement a method to lazy load this
-                self.hierarchical_format = []
+                metadata_file = os.path.join(self.output_dir, f'{self.catname}_meta.json')
 
-        if self.source == 's3':
+                if os.path.exists(metadata_file):
+                    print(f'Located Partitioned Catalog: {metadata_file}')
+                    with open(metadata_file) as f:
+                        self.hips_metadata = json.load(f)
+                else:
+                    print('Catalog not fully imported. Re-run catalog.hips_import()')
+
+        elif self.source == 's3':
+            sys.exit('Not Implemented ERROR')
+        else:
             sys.exit('Not Implemented ERROR')
 
 
@@ -88,16 +99,17 @@ class Catalog():
             urls = urls[:limit]
 
         if verbose:
-            print('Attempting to format files: ')
-            print(urls)
+            print(f'Attempting to format files: {len(urls)}')
 
         if len(urls):
             self.partitioner = pt.Partitioner(catname=self.catname, fmt=fmt, urls=urls, id_kw=id_kw,
-                        order_k=10, verbose=verbose, debug=debug, ra_kw=ra_kw, dec_kw=dec_kw)
+                        order_k=10, verbose=verbose, debug=debug, ra_kw=ra_kw, dec_kw=dec_kw, 
+                        location=self.location)
 
             if debug:
                 self.partitioner.gather_statistics()
                 self.partitioner.compute_partitioning_map(max_counts_per_partition=threshold)
+                self.partitioner.write_structure_metadata()
             else:
                 self.partitioner.run(client=client, threshold=threshold)
 
@@ -105,9 +117,43 @@ class Catalog():
             print('No files Found!')
 
 
-    def cross_match(self, othercat=None, dist_thresh=1.0):
-        sys.exit('Not Implemented ERROR')
-        assert othercat is not None, 'Must specify another catalog to crossmatch with'
+    def cross_match(self, othercat=None, n_neighbors=3, dthresh=4.0, client=None, debug=False):
+        '''
+            before figuring out output
+                output skymap histogram
+        '''
+
+        assert othercat is not None, 'Must specify another catalog to crossmatch with.'
+        assert isinstance(othercat, Catalog), 'The other catalog must be an instance of hipcat.Catalog.'
+
+        cat1_md = self.hips_metadata
+        cat2_md = othercat.hips_metadata
+        nmatches = 0
+        hp_xmatch_map = util.map_catalog_hips(cat1_md['hips'], self.output_dir,
+                cat2_md['hips'], othercat.output_dir)
+
+        if debug:
+            hp_xmatch_map = hp_xmatch_map
+            print(hp_xmatch_map)
+        
+        if client:
+            futures = client.map(
+                du._cross_match,
+                hp_xmatch_map,
+                c1_md=cat1_md,
+                c2_md=cat2_md,
+                n_neighbors=n_neighbors,
+                dthresh=dthresh 
+            )
+            progress(futures)
+            
+            nmatches = sum([x.result() for x in futures])
+
+        else:
+            sys.exit('Not implemented')
+
+        print()
+        print(f'Total matches {nmatches}')
 
 
     def query(self, ra, dec, radius):

@@ -1,10 +1,12 @@
 import os
 import glob
 import random
+import json
 import numpy as np
 import pandas as pd
 import healpy as hp
 import dask.bag as db
+import matplotlib
 import matplotlib.pyplot as plt
 
 from functools import partial
@@ -20,7 +22,7 @@ class Partitioner():
 
     def __init__(self, catname, urls=[], fmt='csv', ra_kw='ra', dec_kw='dec', 
         id_kw='source_id',  order_k=5, output='output', cache='cache', 
-        verbose=False, debug=False):
+        verbose=False, debug=False, location=os.getcwd()):
 
         self.catname = catname
         self.urls = urls
@@ -28,15 +30,19 @@ class Partitioner():
         self.ra_kw = ra_kw
         self.dec_kw = dec_kw
         self.id_kw = id_kw
+        self.location = location
         self.cache = cache
         self.output = output
         self.order_k = order_k
         self.verbose = verbose
-        self.debug = debug
+        self.debug = 
+        
         self.img = None
         self.orders = None
         self.opix = None
+        self.hips_structure = None
         self.output_written = False
+        self.threshold = None
 
         assert self.fmt in ['csv', 'parquet', 'csv.gz', 'fits'], \
             'Source catalog file format not implemented. csv, csv.gz, fits, and parquet\
@@ -47,7 +53,7 @@ class Partitioner():
 
 
     def set_cache_dir(self):
-        self.cache_dir = os.path.join(os.getcwd(), self.cache, self.catname)
+        self.cache_dir = os.path.join(self.location, self.cache, self.catname)
         if self.verbose and not os.path.exists(self.cache_dir):
             print(f'Cache Directory does not exist')
             print(f'Creating: {self.cache_dir}')
@@ -55,7 +61,7 @@ class Partitioner():
 
 
     def set_output_dir(self):
-        self.output_dir = os.path.join(os.getcwd(), self.output, self.catname)
+        self.output_dir = os.path.join(self.location, self.output, self.catname)
         if self.verbose and not os.path.exists(self.output_dir):
             print(f'Output Directory does not exist')
             print(f'Creating: {self.output_dir}')
@@ -71,6 +77,7 @@ class Partitioner():
         else:
             self.write_partitioned_structure()
             self.structure_map_reduce()
+        self.write_structure_metadata()
 
 
     def gather_statistics(self, writeread_cache=True):
@@ -121,7 +128,7 @@ class Partitioner():
         orders = np.full(len(self.img), -1) # healpix map of orders
         opix = {}  # dictionary of partitions used at each level
 
-        thresh = max_counts_per_partition
+        self.threshold = max_counts_per_partition
 
         # Top-down partitioning. Given a dataset partitioned at order k
         # bin it to higher orders (starting at 0, and working our way
@@ -168,7 +175,7 @@ class Partitioner():
 
             # find order o indices where pixel counts are below threshold.
             # These are the one which we will keep at this order.
-            pixo, = np.nonzero(active & (imgo < thresh))
+            pixo, = np.nonzero(active & (imgo < self.threshold))
 
             if len(pixo):
                 opix[o] = pixo # store output
@@ -385,16 +392,47 @@ class Partitioner():
             print('Error: Partitioning map must be computed before reducing')
             return
 
-        orders = os.listdir(self.output_dir)
+        orders = [x for x in os.listdir(self.output_dir) if 'Norder' in x]
         orders.sort(reverse=True)
         pix_directories = []
-        for k in orders:
-            npixs = os.listdir(os.path.join(self.output_dir, k))
-            for pix in npixs:
-                pix_directories.append(os.path.join(self.output_dir, k, pix))
+        hips_structure = {}
+        for k_dir in orders:
+            k = int(k_dir.split('Norder')[1])
+            hips_structure[k] = []
 
+            npixs = os.listdir(os.path.join(self.output_dir, k_dir))
+            npixs = [x for x in npixs if 'Npix' in x]
+            for pix_dir in npixs:
+                pix = int(pix_dir.split('Npix')[1])
+                hips_structure[k].append(pix)
+
+                pix_directories.append(os.path.join(self.output_dir, k_dir, pix_dir))
+
+        self.hips_structure = hips_structure
         futures = client.map(du._map_reduce, pix_directories)
         progress(futures)
+
+
+    def write_structure_metadata(self):
+        if not self.hips_structure:
+            print('Error')
+        
+        metadata = {}
+        metadata['cat_name'] = self.catname
+        metadata['ra_kw'] = self.ra_kw
+        metadata['dec_kw'] = self.dec_kw
+        metadata['id_kw'] = self.id_kw
+        metadata['n_sources'] = self.img.sum()
+        metadata['pix_threshold'] = self.threshold
+        metadata['urls'] = self.urls
+        metadata['hips'] = self.hips_structure
+
+        dumped_metadata = json.dumps(metadata, indent=4, cls=util.NumpyEncoder)
+        with open(os.path.join(self.output_dir, f'{self.catname}_meta.json'), 'w') as f:
+            f.write(dumped_metadata + '\n') 
+        
+        if self.debug:
+            print(dumped_metadata)
 
 
 if __name__ == '__main__':
@@ -412,9 +450,6 @@ if __name__ == '__main__':
     hp.mollview(imp.orders, title=f'partitions', nest=True)
     plt.show()
 
-    #paraleleleize these functions!
-    #imp.write_partitioned_structure()
-    #imp.structure_map_reduce()
     ###
     e = time.time()
     print('Elapsed time = {}'.format(e-s))
