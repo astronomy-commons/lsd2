@@ -1,5 +1,7 @@
+"""Catalog instantiations that test import of several known data sets on epyc data server"""
+
 from dask.distributed import Client
-#import ..hipscat as hc
+import hipscat as hc
 import sys
 sys.path.insert(0, '../')
 
