@@ -7,4 +7,6 @@ examples/dask-worker-space
 .eggs/
 eggs/
 *.egg-info/
+dist/
+build/
 
