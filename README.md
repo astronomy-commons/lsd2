@@ -5,16 +5,51 @@ This repository is designed to facilitate and enable spatial functionality for e
 It is designed to function in parallel frameworks, the current prototype utilizes the [dask distributed](https://distributed.dask.org/en/stable/) framework. The strength of this package relies on spatially partioning the database while considering source density as well. This will enable same-sized file comparisons in cross-matching.
 
 ## Install
-Future releases will be available through pip install, but current prototype involves git-cloning and setup installing. Highly suggest creating a virtual/conda environment (python>=3.7)
+
+### Setting up your machine's environment
+
+Start with a conda python environment:
+
 ```bash
-git clone https://github.com/astronomy-commons/lsd2
-python -m pip install -r requirements.txt
-python setup.py install
+$ cd ~
+$ wget https://repo.anaconda.com/archive/Anaconda3-2022.05-Linux-x86_64.sh
+$ bash Anaconda3-2022.05-Linux-x86_64.sh
+$ source .bashrc
+$ conda update -n -base -c defaults conda
 ```
+
+Note that you *may* already have conda and python installed. Future releases will be available through pip install, but current prototype involves git-cloning and setup installing.
+
+```bash
+$ cd ~
+$ mkdir git
+```
+
+### Setting up virtual development environment
+
+```bash
+$ conda create -n hipscatenv python=3.7
+$ source activate hipscatenv
+$ cd ~/git
+$ git clone https://github.com/astronomy-commons/lsd2
+$ cd lsd2
+$ python -m pip install -r requirements.txt
+$ source setup.bash
+$ pip install -e
+```
+
+### Running unit tests
+
+```bash
+$ cd ~/git/lsd2/tests
+$ python -m unittest
+```
+
+This is a great way to confirm that your development environment is properly configured and you're ready to start working on the code.
 
 ## Current en-Prototype Usage
 
-### Partitioning you catalog
+### Partitioning your catalog
 
 In order to get to the step of actually calculating a cross-match, the source catalogs will need to be partitioned in a way to enable efficient/scalable cross-matches. The way that we are planning to partition the catalogs is through dynamically indexing the sources in healpix space based on catalog density per index. We foresee that parallel processed cross-matching will be further facilitated by this indexing schema. 
 

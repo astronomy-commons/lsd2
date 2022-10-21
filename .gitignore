@@ -8,3 +8,5 @@ examples/dask-worker-space
 eggs/
 *.egg-info/
 
+# vscode
+.vscode/
