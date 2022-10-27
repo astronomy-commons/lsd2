@@ -10,3 +10,5 @@ eggs/
 dist/
 build/
 
+# vscode
+.vscode/
