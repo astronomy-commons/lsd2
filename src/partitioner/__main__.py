@@ -1,4 +1,6 @@
-from . import *
+from PartitionArguments import *
 
 if __name__ == "__main__":
-    print('todo')
+    args = PartitionArguments()
+    args.from_command_line()
+    # TODO: everything else!

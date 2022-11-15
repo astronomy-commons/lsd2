@@ -12,7 +12,7 @@ classifiers = [
 dynamic = ["version"]
 
 [metadata]
-description = "Quantile parametrization of probability distribution functions"
+description = "Spatial functionality for extremely large astronomical databases"
 long_description = { file = "README.md" }
 url = "https://github.com/astronomy-commons/lsd2"
 
