@@ -1,1 +1,1 @@
-from .arguments import PartitionArguments
+from . import arguments

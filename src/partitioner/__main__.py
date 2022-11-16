@@ -1,4 +1,4 @@
-from PartitionArguments import *
+from arguments import PartitionArguments
 
 if __name__ == "__main__":
     args = PartitionArguments()
