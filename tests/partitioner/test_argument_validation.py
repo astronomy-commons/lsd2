@@ -1,15 +1,16 @@
 """Tests of argument validation, in the absense of command line parsing"""
 
 import os
+import unittest
 
 from partitioner.arguments import PartitionArguments
-import unittest
-import argparse
 
 TEST_DIR = os.path.dirname(__file__)
 
 
 class TestArguments(unittest.TestCase):
+    """Test argument validation from parameters"""
+
     def test_none(self):
         """No arguments provided. Should error for required args."""
         args = PartitionArguments()

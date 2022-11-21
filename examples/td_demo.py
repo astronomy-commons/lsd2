@@ -1,10 +1,10 @@
-import sys
+"""Script to generate partitioned catalog using older version of partitioner"""
 
-sys.path.insert(0, "../")
-import hipscat as hc
-from dask.distributed import Client
+import sys
 import time
 
+import hipscat as hc
+from dask.distributed import Client
 
 if __name__ == "__main__":
     s = time.time()

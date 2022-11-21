@@ -1,7 +1,10 @@
-from matplotlib import pyplot as plt
+"""Little script to render a sky map of the pixels in the partitioned catalog"""
+
+import json
+
 import healpy as hp
 import numpy as np
-import json
+from matplotlib import pyplot as plt
 
 
 def plot_map(c, k, title=""):

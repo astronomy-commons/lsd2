@@ -1,27 +1,32 @@
+"""Utility to hold all arguments required throughout partitioning"""
 import argparse
+import glob
 import os
-
-"""
-input		catalog name
-input		column mappings (ra_kw, dec_kw, ra_err_kw, dec_err_kw, id_kw)
-input		debug - input files
-input		input file format
-input		input files
-output	    output directory
-output	    overwrite flag
-output	    debug - keep order/pixel column in output
-output	    debug - verbose logging
-output	    debug - write debug metadata file
-histogram	lowest (/highest?) healpix order
-histogram	per-pixel threshold
-execution	dask - client, distributed cluster, num workers, etc
-execution	dask - temp directory
-execution	dask or serial
-execution	debug - stats only
-"""
 
 
 class PartitionArguments:
+    """Container class for holding partitioning arguments"""
+
+    def __init__(self):
+        self.catalog_name = ""
+        self.input_path = ""
+        self.input_format = ""
+        self.input_paths = []
+
+        self.ra_column = ""
+        self.dec_column = ""
+        self.ra_error_column = ""
+        self.dec_error_column = ""
+        self.id_column = ""
+
+        self.output_path = ""
+        self.overwrite = False
+        self.highest_healpix_order = 10
+        self.pixel_threshold = 1_000_000
+        self.debug_stats_only = False
+
+        self.dask_tmp = ""
+
     def from_command_line(self, cl_args):
         """Parse arguments from the command line"""
 
@@ -30,19 +35,7 @@ class PartitionArguments:
             description="Instantiate a partitioned catalog from unpartitioned sources",
         )
 
-        """
-        ===========           INPUT ARGUMENTS           ===========
-        catalog name
-        input path
-        debug input files
-        input file format
-        column mappings
-                ra
-                dec
-                ra_err
-                dec_err
-                id
-        """
+        # ===========           INPUT ARGUMENTS           ===========
         group = parser.add_argument_group("INPUT")
         group.add_argument(
             "-c",
@@ -56,6 +49,13 @@ class PartitionArguments:
             "--input_path",
             help="path prefix for unpartitioned input files",
             default=None,
+            type=str,
+        )
+        group.add_argument(
+            "-fmt",
+            "--input_format",
+            help="file format for unpartitioned input files",
+            default="parquet",
             type=str,
         )
         group = parser.add_argument_group(
@@ -97,14 +97,7 @@ class PartitionArguments:
             default=None,
             type=str,
         )
-        """
-        ===========           OUTPUT ARGUMENTS          ===========
-        output directory
-        overwrite flag
-        debug - keep order/pixel column in output
-        debug - verbose logging
-        debug - write debug metadata file
-        """
+        # ===========           OUTPUT ARGUMENTS          ===========
         group = parser.add_argument_group("OUTPUT")
         group.add_argument(
             "-o",
@@ -125,25 +118,20 @@ class PartitionArguments:
             action="store_false",
         )
 
-        """
-        ===========           STATS ARGUMENTS           ===========
-        lowest (/highest?) healpix order
-        per-pixel threshold
-        debug - stats only
-        """
+        # ===========           STATS ARGUMENTS           ===========
         group = parser.add_argument_group("STATS")
         group.add_argument(
             "-ho",
-            "--healpix_order",
+            "--highest_healpix_order",
             help="the most dense healpix order (7-10 is a good range for this)",
-            default=None,
+            default=10,
             type=int,
         )
         group.add_argument(
             "-pt",
             "--pixel_threshold",
             help="maximum objects allowed in a single pixel",
-            default=None,
+            default=1_000_000,
             type=int,
         )
         group.add_argument(
@@ -157,12 +145,7 @@ class PartitionArguments:
             dest="debug_stats_only",
             action="store_false",
         )
-        """
-        ===========         EXECUTION ARGUMENTS         ===========
-        dask - client, distributed cluster, num workers, etc
-        dask - temp directory
-        dask or serial
-        """
+        # ===========         EXECUTION ARGUMENTS         ===========
         group = parser.add_argument_group("EXECUTION")
         group.add_argument(
             "-dt",
@@ -174,17 +157,58 @@ class PartitionArguments:
 
         args = parser.parse_args(cl_args)
 
-        self.catalog_name = args.catalog_name
-        self.input_path = args.input_path
-        self.output_path = args.output_path
+        self.from_params(
+            catalog_name=args.catalog_name,
+            input_path=args.input_path,
+            input_format=args.input_format,
+            ra_column=args.ra_column,
+            dec_column=args.dec_column,
+            ra_error_column=args.ra_error_column,
+            dec_error_column=args.dec_error_column,
+            id_column=args.id_column,
+            output_path=args.output_path,
+            overwrite=args.overwrite,
+            highest_healpix_order=args.highest_healpix_order,
+            pixel_threshold=args.pixel_threshold,
+            debug_stats_only=args.debug_stats_only,
+            dask_tmp=args.dask_tmp,
+        )
 
-        self.check_arguments()
-        self.check_paths()
-
-    def from_params(self, catalog_name="", input_path="", output_path=""):
+    def from_params(
+        self,
+        catalog_name="",
+        input_path="",
+        input_format="parquet",
+        ra_column="",
+        dec_column="",
+        ra_error_column="",
+        dec_error_column="",
+        id_column="",
+        output_path="",
+        overwrite=False,
+        highest_healpix_order=10,
+        pixel_threshold=1_000_000,
+        debug_stats_only=False,
+        dask_tmp="",
+    ):
+        """Use arguments provided in parameters."""
         self.catalog_name = catalog_name
         self.input_path = input_path
+        self.input_format = input_format
+
+        self.ra_column = ra_column
+        self.dec_column = dec_column
+        self.ra_error_column = ra_error_column
+        self.dec_error_column = dec_error_column
+        self.id_column = id_column
+
         self.output_path = output_path
+        self.overwrite = overwrite
+        self.highest_healpix_order = highest_healpix_order
+        self.pixel_threshold = pixel_threshold
+        self.debug_stats_only = debug_stats_only
+
+        self.dask_tmp = dask_tmp
 
         self.check_arguments()
         self.check_paths()
@@ -206,3 +230,6 @@ class PartitionArguments:
             raise ValueError("output_path is required")
         if not os.path.exists(self.output_path):
             raise ValueError("output_path not found on local storage")
+
+        # Basic checks complete - make more checks and create directories where necessary
+        self.input_paths = glob.glob(f"{self.input_path}*{self.input_format}")

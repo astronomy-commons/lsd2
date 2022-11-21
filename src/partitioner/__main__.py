@@ -1,5 +1,8 @@
-from arguments import PartitionArguments
+"""Main method to enable command line execution"""
+
 import sys
+
+from arguments import PartitionArguments
 
 if __name__ == "__main__":
     args = PartitionArguments()
