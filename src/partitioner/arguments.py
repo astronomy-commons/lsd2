@@ -3,7 +3,7 @@ import os
 
 
 class PartitionArguments:
-    def from_command_line(self):
+    def from_command_line(self, cl_args):
         """Parse arguments from the command line"""
 
         parser = argparse.ArgumentParser(
@@ -20,11 +20,19 @@ class PartitionArguments:
         parser.add_argument(
             "output_path", help="path prefix for partitioned output and metadata files"
         )
-        args = parser.parse_args()
+        args = parser.parse_args(cl_args)
 
         self.catalog_name = args.catalog_name
         self.input_path = args.input_path
         self.output_path = args.output_path
+
+        self.check_arguments()
+        self.check_paths()
+
+    def from_params(self, catalog_name="", input_path="", output_path=""):
+        self.catalog_name = catalog_name
+        self.input_path = input_path
+        self.output_path = output_path
 
         self.check_arguments()
         self.check_paths()

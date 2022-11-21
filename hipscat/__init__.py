@@ -17,7 +17,7 @@ Partitioner = partitioner.Partitioner
 def pix2subdir(k, pix):
     # return a healpix subdirectory for the given order and pixel number
     # FIXME: turn this into a proper docstring
-    return f'Norder{k}/Npix{pix}'
+    return f"Norder{k}/Npix{pix}"
 
 
 def _to_hips(df, hipsPath):
@@ -27,20 +27,20 @@ def _to_hips(df, hipsPath):
     # grab the order and pix number for this dataframe. Since this function
     # is intented to be called with apply() after running groupby on (k, pix), these must
     # be the same throughout the entire dataframe
-    k, pix = df['hips_k'].iloc[0],  df['hips_pix'].iloc[0]
-    assert (df['hips_k'] == k).all()
-    assert (df['hips_pix'] == pix).all()
+    k, pix = df["hips_k"].iloc[0], df["hips_pix"].iloc[0]
+    assert (df["hips_k"] == k).all()
+    assert (df["hips_pix"] == pix).all()
 
     # construct the output directory and filename
     dir = os.path.join(hipsPath, pix2subdir(k, pix))
-    fn = os.path.join(dir, 'catalog.csv')
+    fn = os.path.join(dir, "catalog.csv")
 
     # create dir if it doesn't exist
     os.makedirs(dir, exist_ok=True)
 
     # write to the file (append if it already exists)
     # also, write the header only if the file doesn't already exist
-    df.to_csv(fn, mode='a', index=False, header=not os.path.exists(fn))
+    df.to_csv(fn, mode="a", index=False, header=not os.path.exists(fn))
 
     # return the number of records written
     return len(df)
@@ -51,12 +51,11 @@ def df2hips(hipsPath, df, k):
     # FIXME: rewrite this implementation so it doesn't modify the input dataframe
 
     # FIXME: write a proper docstring
-    df['hips_k'] = k
-    df['hips_pix'] = hp.ang2pix(
-        2**k, df['ra'].values, df['dec'].values, lonlat=True)
+    df["hips_k"] = k
+    df["hips_pix"] = hp.ang2pix(2**k, df["ra"].values, df["dec"].values, lonlat=True)
 
     # returns the number of records written to each HiPS file
-    return df.groupby(['hips_k', 'hips_pix']).apply(_to_hips, hipsPath=hipsPath)
+    return df.groupby(["hips_k", "hips_pix"]).apply(_to_hips, hipsPath=hipsPath)
 
 
 def csv2hips(hipsPath, urls, k=5):
@@ -85,7 +84,7 @@ def csv2hips(hipsPath, urls, k=5):
             summary = summary.add(ret, fill_value=0).astype(int)
 
         # progress update
-        prog.set_postfix({'rows imported': summary.sum()})
+        prog.set_postfix({"rows imported": summary.sum()})
 
     return summary
 
@@ -96,8 +95,9 @@ def main():
     #    urls = glob.glob('./gdr2/*.csv.gz')
 
     from .util import get_gaia_csv_urls
+
     urls = get_csv_urls()[:10]
 
-    summary = csv2hips('output', urls)
+    summary = csv2hips("output", urls)
     print(summary)
-    print(f'Total rows imported: {summary.sum()}')
+    print(f"Total rows imported: {summary.sum()}")

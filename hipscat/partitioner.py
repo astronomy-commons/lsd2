@@ -14,15 +14,27 @@ from dask.distributed import Client, progress
 
 from . import util
 from . import dask_utils as du
-#import util
-#import dask_utils as du
+
+# import util
+# import dask_utils as du
 
 
-class Partitioner():
-
-    def __init__(self, catname, urls=[], fmt='csv', ra_kw='ra', dec_kw='dec', 
-        id_kw='source_id',  order_k=5, output='output', cache='cache', 
-        verbose=False, debug=False, location=os.getcwd()):
+class Partitioner:
+    def __init__(
+        self,
+        catname,
+        urls=[],
+        fmt="csv",
+        ra_kw="ra",
+        dec_kw="dec",
+        id_kw="source_id",
+        order_k=5,
+        output="output",
+        cache="cache",
+        verbose=False,
+        debug=False,
+        location=os.getcwd(),
+    ):
 
         self.catname = catname
         self.urls = urls
@@ -36,7 +48,7 @@ class Partitioner():
         self.order_k = order_k
         self.verbose = verbose
         self.debug = debug
-        
+
         self.img = None
         self.orders = None
         self.opix = None
@@ -44,29 +56,30 @@ class Partitioner():
         self.output_written = False
         self.threshold = None
 
-        assert self.fmt in ['csv', 'parquet', 'csv.gz', 'fits'], \
-            'Source catalog file format not implemented. csv, csv.gz, fits, and parquet\
-             are the only currently implemented formats'
+        assert self.fmt in [
+            "csv",
+            "parquet",
+            "csv.gz",
+            "fits",
+        ], "Source catalog file format not implemented. csv, csv.gz, fits, and parquet\
+             are the only currently implemented formats"
 
         self.set_cache_dir()
         self.set_output_dir()
 
-
     def set_cache_dir(self):
         self.cache_dir = os.path.join(self.location, self.cache, self.catname)
         if self.verbose and not os.path.exists(self.cache_dir):
-            print(f'Cache Directory does not exist')
-            print(f'Creating: {self.cache_dir}')
+            print(f"Cache Directory does not exist")
+            print(f"Creating: {self.cache_dir}")
         os.makedirs(self.cache_dir, exist_ok=True)
-
 
     def set_output_dir(self):
         self.output_dir = os.path.join(self.location, self.output, self.catname)
         if self.verbose and not os.path.exists(self.output_dir):
-            print(f'Output Directory does not exist')
-            print(f'Creating: {self.output_dir}')
+            print(f"Output Directory does not exist")
+            print(f"Creating: {self.output_dir}")
         os.makedirs(self.output_dir, exist_ok=True)
-
 
     def run(self, client=None, threshold=1_000_000):
         self.gather_statistics()
@@ -75,12 +88,11 @@ class Partitioner():
             self.write_partitioned_structure_wdask(client=client)
             self.structure_map_reduce_wdask(client=client)
         else:
-            print('Warning. This will potentially take a long time')
-            print('Highly suggest constructing a distributed dask client')
+            print("Warning. This will potentially take a long time")
+            print("Highly suggest constructing a distributed dask client")
             self.write_partitioned_structure()
             self.structure_map_reduce()
         self.write_structure_metadata()
-
 
     def gather_statistics(self, writeread_cache=True):
         # files: iterable of files to load
@@ -89,45 +101,59 @@ class Partitioner():
         #
         # returns: img (self.order_k healpix map with object counts)
 
-        mapFn = os.path.join(self.cache_dir, f'{self.catname}_order{self.order_k}_hpmap.fits')
+        mapFn = os.path.join(
+            self.cache_dir, f"{self.catname}_order{self.order_k}_hpmap.fits"
+        )
         if writeread_cache:
             if os.path.exists(mapFn):
                 try:
                     self.img = hp.read_map(mapFn)
                 except:
-                    print('Warning. Error reading cached map. Attempting to re-calculate it')
+                    print(
+                        "Warning. Error reading cached map. Attempting to re-calculate it"
+                    )
                     self.img = None
 
         if self.img is None:
             if self.verbose:
-                print(f'Caching input source catalogs into parquet files: {len(self.urls)} files')
+                print(
+                    f"Caching input source catalogs into parquet files: {len(self.urls)} files"
+                )
 
-            self.img = db.from_sequence(
-                self.urls,
-                partition_size=1
-            ).reduction(
-                partial(
-                    du._gather_statistics_hpix_hist,
-                        k=self.order_k, cache_dir=self.cache_dir, fmt=self.fmt,
-                        ra_kw=self.ra_kw, dec_kw=self.dec_kw
+            self.img = (
+                db.from_sequence(self.urls, partition_size=1)
+                .reduction(
+                    partial(
+                        du._gather_statistics_hpix_hist,
+                        k=self.order_k,
+                        cache_dir=self.cache_dir,
+                        fmt=self.fmt,
+                        ra_kw=self.ra_kw,
+                        dec_kw=self.dec_kw,
                     ),
-                sum, split_every=3
-            ).compute()
+                    sum,
+                    split_every=3,
+                )
+                .compute()
+            )
 
             if writeread_cache:
                 if self.verbose:
-                    print(f'Saving source healpix map.')
+                    print(f"Saving source healpix map.")
                 hp.write_map(mapFn, self.img)
 
         if self.debug:
-            hp.mollview(np.log10(self.img+1), title=f'{self.img.sum():,.0f} sources', nest=True)
+            hp.mollview(
+                np.log10(self.img + 1),
+                title=f"{self.img.sum():,.0f} sources",
+                nest=True,
+            )
             plt.show()
-
 
     def compute_partitioning_map(self, max_counts_per_partition=1_000_000):
 
         # the output
-        orders = np.full(len(self.img), -1) # healpix map of orders
+        orders = np.full(len(self.img), -1)  # healpix map of orders
         opix = {}  # dictionary of partitions used at each level
 
         self.threshold = max_counts_per_partition
@@ -162,11 +188,11 @@ class Partitioner():
         #
         k = hp.npix2order(len(self.img))
         idx = np.arange(len(self.img))
-        for o in range(0, k+1):
+        for o in range(0, k + 1):
             # the number of order-k pixels that are in one order-o pixel.
             # integer-dividing order-k pixel index (NEST scheme) with
             # this value will return the order-o index it falls within.
-            k2o = 4**(k-o)
+            k2o = 4 ** (k - o)
 
             # order o-sized bool mask listing pixels that haven't yet been
             # assigned a partition.
@@ -177,41 +203,43 @@ class Partitioner():
 
             # find order o indices where pixel counts are below threshold.
             # These are the one which we will keep at this order.
-            pixo, = np.nonzero(active & (imgo < self.threshold))
+            (pixo,) = np.nonzero(active & (imgo < self.threshold))
 
             if len(pixo):
-                opix[o] = pixo # store output
+                opix[o] = pixo  # store output
 
                 # record the order-k indices which have been assigned to the
                 # partition at this level (order o). This makes it easy to
                 # check which ones are still left to process (see the 'active=...' line above)
-                pixk = idx.reshape(-1, k2o)[pixo].flatten()  # this bit of magic generates all order-k 
-                                                            # indices of pixels that fall into order-o
-                                                            # pixels stored in pixo
+                pixk = idx.reshape(-1, k2o)[
+                    pixo
+                ].flatten()  # this bit of magic generates all order-k
+                # indices of pixels that fall into order-o
+                # pixels stored in pixo
                 orders[pixk] = o
                 if self.verbose:
                     print(o, np.count_nonzero(orders == -1), len(pixo))
-
 
         assert not (orders == -1).any()
         self.orders = orders
         self.opix = opix
 
         if self.debug:
-            hp.mollview(self.orders, title=f'partitions', nest=True)
+            hp.mollview(self.orders, title=f"partitions", nest=True)
             plt.show()
-
 
     def write_partitioned_structure(self):
         if not self.opix:
-            print('Error: Partitioning map must be computed before writing partitioned structure')
+            print(
+                "Error: Partitioning map must be computed before writing partitioned structure"
+            )
             return
 
-        #need to go from the top down:
+        # need to go from the top down:
         order_of_orders = list(self.opix.keys())
         order_of_orders.sort(reverse=True)
 
-        #for order in order_of_orders:
+        # for order in order_of_orders:
         #    print(order)
         #    order_partition_fd = os.path.join(dir, f'Norder{order}')
         #    if not os.path.exists(order_partition_fd):
@@ -222,7 +250,7 @@ class Partitioner():
         #        if not os.path.exists(partition_pix_fd):
         #            os.makedirs(partition_pix_fd)
 
-        #TODO block needs to have the ability to be parallelized
+        # TODO block needs to have the ability to be parallelized
 
         urls = self.urls
         total_sources = self.img.sum()
@@ -236,59 +264,60 @@ class Partitioner():
             urls = urls[:10]
 
         for url in urls:
-            base_filename = os.path.basename(url).split('.')[0]
-            parqFn = os.path.join(self.cache_dir, base_filename + '.parquet')
-            df = pd.read_parquet(parqFn, engine='pyarrow')
+            base_filename = os.path.basename(url).split(".")[0]
+            parqFn = os.path.join(self.cache_dir, base_filename + ".parquet")
+            df = pd.read_parquet(parqFn, engine="pyarrow")
 
-            print(f'Finding sources in file: {base_filename}')
+            print(f"Finding sources in file: {base_filename}")
             for k in order_of_orders:
-                print(f'Order level {k}')
+                print(f"Order level {k}")
 
-                df['hips_k'] = k
-                df['hips_pix'] = hp.ang2pix(2**k,
-                                            df[self.ra_kw].values,
-                                            df[self.dec_kw].values,
-                                            lonlat=True,
-                                            nest=True
-                                            )
+                df["hips_k"] = k
+                df["hips_pix"] = hp.ang2pix(
+                    2**k,
+                    df[self.ra_kw].values,
+                    df[self.dec_kw].values,
+                    lonlat=True,
+                    nest=True,
+                )
 
                 if self.verbose:
-                    print(f'Partition source npix for order {k}')
+                    print(f"Partition source npix for order {k}")
                     print(self.opix[k])
-                    print(f'Catalog source npix for order {k}')
-                    print(np.unique(df['hips_pix']))
+                    print(f"Catalog source npix for order {k}")
+                    print(np.unique(df["hips_pix"]))
 
-                order_df = df.loc[df['hips_pix'].isin(self.opix[k])]
+                order_df = df.loc[df["hips_pix"].isin(self.opix[k])]
                 if self.debug:
-                    non_order_df = df.loc[~df['hips_pix'].isin(self.opix[k])]
+                    non_order_df = df.loc[~df["hips_pix"].isin(self.opix[k])]
                     debug_mask = np.full(hp.order2npix(k), 0)
-                    debug_mask[self.opix[k]]=1
-                    debug_mask[np.unique(non_order_df['hips_pix'])]=2
-                    debug_mask[np.unique(order_df['hips_pix'])]=3
-                    #hp.mollview(debug_mask, nest=True)
-                    #plt.show()
-                #order_mask = np.in1d(df['hips_pix'].values, self.opix[k])
-                #order_df = df[order_mask]
+                    debug_mask[self.opix[k]] = 1
+                    debug_mask[np.unique(non_order_df["hips_pix"])] = 2
+                    debug_mask[np.unique(order_df["hips_pix"])] = 3
+                    # hp.mollview(debug_mask, nest=True)
+                    # plt.show()
+                # order_mask = np.in1d(df['hips_pix'].values, self.opix[k])
+                # order_df = df[order_mask]
 
                 if self.verbose:
-                    print(f'Found n sources {len(order_df)}')
+                    print(f"Found n sources {len(order_df)}")
 
                 audit_counts[k].append(len(order_df))
 
-                #reset the df so that it doesn't include the already partitioned sources
+                # reset the df so that it doesn't include the already partitioned sources
                 # ~df['column_name'].isin(list) -> sources not in order_df sources
                 if self.verbose:
-                    print(f'Number of sources in original DF before culling based off order_k sources: {len(df)}')
+                    print(
+                        f"Number of sources in original DF before culling based off order_k sources: {len(df)}"
+                    )
 
                 df = df.loc[~df[self.id_kw].isin(order_df[self.id_kw])]
                 if self.verbose:
-                    print(f'Number of sources after culling: {len(df)}')
+                    print(f"Number of sources after culling: {len(df)}")
 
-                #groups the sources in order_k pixels, then outputs them to the base_filename sources
-                ret = order_df.groupby(['hips_k', 'hips_pix']).apply(
-                        du._to_hips,
-                        hipsPath=self.output_dir,
-                        base_filename=base_filename
+                # groups the sources in order_k pixels, then outputs them to the base_filename sources
+                ret = order_df.groupby(["hips_k", "hips_pix"]).apply(
+                    du._to_hips, hipsPath=self.output_dir, base_filename=base_filename
                 )
 
                 if self.verbose:
@@ -302,61 +331,63 @@ class Partitioner():
             imported_sources += sum(audit_counts[k])
 
         if self.verbose:
-            print(f'Expected sources: {total_sources}')
-            print(f'Imported sources: {imported_sources}')
+            print(f"Expected sources: {total_sources}")
+            print(f"Imported sources: {imported_sources}")
 
         self.output_written = True
         print("Finished making File partitioned structure")
 
-
     def structure_map_reduce(self):
         if not self.output_written:
-            print('Error: Partitioning map must be computed before reducing')
+            print("Error: Partitioning map must be computed before reducing")
             return
 
-        '''
+        """
             TODO: Must be written for parrellizaiton (sp?)
-        '''
+        """
 
         orders = os.listdir(self.output_dir)
-        orders.sort(reverse=True )
+        orders.sort(reverse=True)
         for k in orders:
             npixs = os.listdir(os.path.join(self.output_dir, k))
-            print(f'Looking in directory: {os.path.join(self.output_dir, k)}')
+            print(f"Looking in directory: {os.path.join(self.output_dir, k)}")
             for pix in npixs:
                 files = os.listdir(os.path.join(self.output_dir, k, pix))
                 dfs = []
 
                 if len(files) == 1:
                     fn = os.path.join(self.output_dir, k, pix, files[0])
-                    df = pd.read_parquet(fn, engine='pyarrow')
-                    new_fn = os.path.join(self.output_dir, k, pix, 'catalog.parquet')
+                    df = pd.read_parquet(fn, engine="pyarrow")
+                    new_fn = os.path.join(self.output_dir, k, pix, "catalog.parquet")
                     if self.verbose:
-                        print(f'Renaming {files[0]} to catalog.parquet')
+                        print(f"Renaming {files[0]} to catalog.parquet")
                     os.rename(fn, new_fn)
                 elif len(files):
                     if self.verbose:
-                        print(f'Concatenating {len(files)} files into Norder{k}/Npix{pix} catalog.parquet')
+                        print(
+                            f"Concatenating {len(files)} files into Norder{k}/Npix{pix} catalog.parquet"
+                        )
                     for f in files:
                         fn = os.path.join(self.output_dir, k, pix, f)
-                        dfs.append(pd.read_parquet(fn, engine='pyarrow'))
+                        dfs.append(pd.read_parquet(fn, engine="pyarrow"))
                         os.remove(fn)
 
                     df = pd.concat(dfs, sort=False)
-                    output_fn = os.path.join(self.output_dir, k, pix, 'catalog.parquet')
+                    output_fn = os.path.join(self.output_dir, k, pix, "catalog.parquet")
                     df.to_parquet(output_fn)
 
                 if self.verbose:
-                    #lengths should be around the max_counts_per_partition
-                    print(f'Length of dataframe for order {k}, npix {pix}: {len(df)}')
-
+                    # lengths should be around the max_counts_per_partition
+                    print(f"Length of dataframe for order {k}, npix {pix}: {len(df)}")
 
     def write_partitioned_structure_wdask(self, client):
         if not self.opix:
-            print('Error: Partitioning map must be computed before writing partitioned structure')
+            print(
+                "Error: Partitioning map must be computed before writing partitioned structure"
+            )
             return
 
-        #need to go from the top down:
+        # need to go from the top down:
         orders = list(self.opix.keys())
         orders.sort(reverse=True)
 
@@ -371,41 +402,41 @@ class Partitioner():
         pfiles = []
 
         for url in urls:
-            base_filename = os.path.basename(url).split('.')[0]
-            pfiles.append(os.path.join(self.cache_dir, base_filename + '.parquet'))
+            base_filename = os.path.basename(url).split(".")[0]
+            pfiles.append(os.path.join(self.cache_dir, base_filename + ".parquet"))
 
         futures = client.map(
-            du._write_partition_structure, pfiles,
+            du._write_partition_structure,
+            pfiles,
             cache_dir=self.cache_dir,
             output_dir=self.output_dir,
             orders=orders,
             opix=self.opix,
             ra_kw=self.ra_kw,
             dec_kw=self.dec_kw,
-            id_kw=self.id_kw
+            id_kw=self.id_kw,
         )
 
         progress(futures)
         self.output_written = True
 
-
     def structure_map_reduce_wdask(self, client):
         if not self.output_written:
-            print('Error: Partitioning map must be computed before reducing')
+            print("Error: Partitioning map must be computed before reducing")
             return
 
-        orders = [x for x in os.listdir(self.output_dir) if 'Norder' in x]
+        orders = [x for x in os.listdir(self.output_dir) if "Norder" in x]
         orders.sort(reverse=True)
         pix_directories = []
         hips_structure = {}
         for k_dir in orders:
-            k = int(k_dir.split('Norder')[1])
+            k = int(k_dir.split("Norder")[1])
             hips_structure[k] = []
 
             npixs = os.listdir(os.path.join(self.output_dir, k_dir))
-            npixs = [x for x in npixs if 'Npix' in x]
+            npixs = [x for x in npixs if "Npix" in x]
             for pix_dir in npixs:
-                pix = int(pix_dir.split('Npix')[1])
+                pix = int(pix_dir.split("Npix")[1])
                 hips_structure[k].append(pix)
 
                 pix_directories.append(os.path.join(self.output_dir, k_dir, pix_dir))
@@ -414,44 +445,44 @@ class Partitioner():
         futures = client.map(du._map_reduce, pix_directories)
         progress(futures)
 
-
     def write_structure_metadata(self):
         if not self.hips_structure:
-            print('Error')
-        
+            print("Error")
+
         metadata = {}
-        metadata['cat_name'] = self.catname
-        metadata['ra_kw'] = self.ra_kw
-        metadata['dec_kw'] = self.dec_kw
-        metadata['id_kw'] = self.id_kw
-        metadata['n_sources'] = self.img.sum()
-        metadata['pix_threshold'] = self.threshold
-        metadata['urls'] = self.urls
-        metadata['hips'] = self.hips_structure
+        metadata["cat_name"] = self.catname
+        metadata["ra_kw"] = self.ra_kw
+        metadata["dec_kw"] = self.dec_kw
+        metadata["id_kw"] = self.id_kw
+        metadata["n_sources"] = self.img.sum()
+        metadata["pix_threshold"] = self.threshold
+        metadata["urls"] = self.urls
+        metadata["hips"] = self.hips_structure
 
         dumped_metadata = json.dumps(metadata, indent=4, cls=util.NumpyEncoder)
-        with open(os.path.join(self.output_dir, f'{self.catname}_meta.json'), 'w') as f:
-            f.write(dumped_metadata + '\n') 
-        
+        with open(os.path.join(self.output_dir, f"{self.catname}_meta.json"), "w") as f:
+            f.write(dumped_metadata + "\n")
+
         if self.debug:
             print(dumped_metadata)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import time
+
     s = time.time()
     ###
-    #urls = glob.glob('/epyc/data/gaia_edr3_csv/*.csv.gz')[:10]
+    # urls = glob.glob('/epyc/data/gaia_edr3_csv/*.csv.gz')[:10]
 
-    urls = glob.glob('/epyc/data/sdss_parquet/*.parquet')[:10]
-    imp = Partitioner(catname='sdss', urls=urls, order_k=10, verbose=True, debug=True)
+    urls = glob.glob("/epyc/data/sdss_parquet/*.parquet")[:10]
+    imp = Partitioner(catname="sdss", urls=urls, order_k=10, verbose=True, debug=True)
     imp.gather_statistics()
-    hp.mollview(np.log10(imp.img+1), title=f'{imp.img.sum():,.0f} sources', nest=True)
+    hp.mollview(np.log10(imp.img + 1), title=f"{imp.img.sum():,.0f} sources", nest=True)
     plt.show()
     imp.compute_partitioning_map(max_counts_per_partition=1_000_000)
-    hp.mollview(imp.orders, title=f'partitions', nest=True)
+    hp.mollview(imp.orders, title=f"partitions", nest=True)
     plt.show()
 
     ###
     e = time.time()
-    print('Elapsed time = {}'.format(e-s))
+    print("Elapsed time = {}".format(e - s))
