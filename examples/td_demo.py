@@ -23,7 +23,7 @@ if __name__ == "__main__":
         id_kw="id",
         debug=False,
         verbose=True,
-        threshold=100_000,
+        threshold=1_000_000,
         client=client,
     )
 
