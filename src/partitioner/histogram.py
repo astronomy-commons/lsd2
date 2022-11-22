@@ -8,7 +8,6 @@ import dask.dataframe as dd
 import healpy as hp
 import numpy as np
 import pandas as pd
-from astropy.table import Table
 from dask.delayed import delayed
 from dask.distributed import Client, progress
 

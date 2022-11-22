@@ -17,6 +17,7 @@ def read_dataframe(path="", file_format="parquet") -> pd.DataFrame:
             f"Directory found at path - requires regular file: {path}"
         )
 
+    data_frame = pd.DataFrame
     # Load file using appropriate mechanism
     if "csv" in file_format:
         data_frame = pd.read_csv(path)

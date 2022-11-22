@@ -1,16 +1,12 @@
 """Tests of file IO (reads and writes)"""
 
-import sys
 import unittest
 
-# This doesn't feel good, but I'm tired of fighting.
-sys.path.insert(0, "../")
-
-import data.constants as dc
 import pandas as pd
 import pyarrow as pa
 
 import partitioner.io_utils as io
+import tests.constants as dc
 
 
 class TestIOUtils(unittest.TestCase):

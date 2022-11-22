@@ -1,15 +1,9 @@
 """Tests of argument validation, in the absense of command line parsing"""
 
-import os
-import sys
 import unittest
 
+import tests.constants as dc
 from partitioner.arguments import PartitionArguments
-
-# This doesn't feel good, but I'm tired of fighting.
-sys.path.insert(0, "../")
-
-import data.constants as dc
 
 
 class TestArguments(unittest.TestCase):

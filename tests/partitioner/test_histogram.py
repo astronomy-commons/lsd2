@@ -1,19 +1,11 @@
 """Tests of histogram calculations"""
 
-import sys
 import unittest
 
-# This doesn't feel good, but I'm tired of fighting.
-sys.path.insert(0, "../")
-
-import data.constants as dc
 import numpy.testing as npt
-import pandas as pd
-import pyarrow as pa
-from dask.distributed import Client, get_client
 
 import partitioner.histogram as hist
-import partitioner.io_utils as io
+import tests.constants as dc
 from partitioner.arguments import PartitionArguments
 
 
