@@ -11,6 +11,7 @@ class PartitionArguments:
         self.catalog_name = ""
         self.input_path = ""
         self.input_format = ""
+        self.debug_input_files = []
         self.input_paths = []
 
         self.ra_column = ""
@@ -58,6 +59,15 @@ class PartitionArguments:
             default="parquet",
             type=str,
         )
+        group.add_argument(
+            "-di",
+            "--debug_input_files",
+            help="explicit list of input files comma-separated",
+            default=None,
+            type=str,
+        )
+
+        # ===========            INPUT COLUMNS            ===========
         group = parser.add_argument_group(
             "INPUT COLUMNS",
             "Column names in the input source that correspond to spatial attributes used in partitioning",
@@ -161,6 +171,7 @@ class PartitionArguments:
             catalog_name=args.catalog_name,
             input_path=args.input_path,
             input_format=args.input_format,
+            debug_input_files=args.debug_input_files,
             ra_column=args.ra_column,
             dec_column=args.dec_column,
             ra_error_column=args.ra_error_column,
@@ -179,11 +190,12 @@ class PartitionArguments:
         catalog_name="",
         input_path="",
         input_format="parquet",
-        ra_column="",
-        dec_column="",
-        ra_error_column="",
-        dec_error_column="",
-        id_column="",
+        debug_input_files="",
+        ra_column="ra",
+        dec_column="dec",
+        ra_error_column="ra_error",
+        dec_error_column="ra_error",
+        id_column="id",
         output_path="",
         overwrite=False,
         highest_healpix_order=10,
@@ -195,6 +207,7 @@ class PartitionArguments:
         self.catalog_name = catalog_name
         self.input_path = input_path
         self.input_format = input_format
+        self.debug_input_files = debug_input_files
 
         self.ra_column = ra_column
         self.dec_column = dec_column
@@ -215,15 +228,19 @@ class PartitionArguments:
 
     def check_arguments(self):
         """Check existence and consistency of argument values"""
-        if self.catalog_name == "":
+        if not self.catalog_name:
             raise ValueError("catalog_name is required")
+        if not self.input_format:
+            raise ValueError("input_format is required")
 
     def check_paths(self):
         """Check existence and permissions on provided path arguments"""
         # TODO: handle non-posix files/paths
-        if not self.input_path:
-            raise ValueError("input_path is required")
-        if not os.path.exists(self.input_path):
+        if not self.input_path and not self.debug_input_files:
+            raise ValueError("input_path or debug_input_files is required")
+        if self.input_path and self.debug_input_files:
+            raise ValueError("only one of input_path or debug_input_files is allowed")
+        if self.input_path and not os.path.exists(self.input_path):
             raise ValueError("input_path not found on local storage")
 
         if not self.output_path:
@@ -232,4 +249,14 @@ class PartitionArguments:
             raise ValueError("output_path not found on local storage")
 
         # Basic checks complete - make more checks and create directories where necessary
-        self.input_paths = glob.glob(f"{self.input_path}*{self.input_format}")
+        if self.input_path:
+            self.input_paths = glob.glob(f"{self.input_path}/*{self.input_format}")
+            if len(self.input_paths) == 0:
+                raise FileNotFoundError(
+                    f"No files matched file pattern: {self.input_path}*{self.input_format} "
+                )
+        elif self.debug_input_files:
+            self.input_paths = self.debug_input_files.split(",")
+            for test_path in self.input_paths:
+                if not os.path.exists(test_path):
+                    raise FileNotFoundError(f"{test_path} not found on local storage")

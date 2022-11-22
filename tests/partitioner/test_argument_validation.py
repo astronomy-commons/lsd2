@@ -1,11 +1,15 @@
 """Tests of argument validation, in the absense of command line parsing"""
 
 import os
+import sys
 import unittest
 
 from partitioner.arguments import PartitionArguments
 
-TEST_DIR = os.path.dirname(__file__)
+# This doesn't feel good, but I'm tired of fighting.
+sys.path.insert(0, "../")
+
+import data.constants as dc
 
 
 class TestArguments(unittest.TestCase):
@@ -29,10 +33,39 @@ class TestArguments(unittest.TestCase):
         """Required arguments are provided, and paths are found."""
         args = PartitionArguments()
         args.from_params(
-            catalog_name="catalog", input_path=TEST_DIR, output_path=TEST_DIR
+            catalog_name="catalog",
+            input_path=dc.TEST_BLANK_DATA_DIR,
+            input_format="csv",
+            output_path=dc.TEST_TMP_DIR,
         )
-        self.assertEqual(args.input_path, TEST_DIR)
-        self.assertEqual(args.output_path, TEST_DIR)
+        self.assertEqual(args.input_path, dc.TEST_BLANK_DATA_DIR)
+        self.assertEqual(len(args.input_paths), 1)
+        self.assertEqual(args.input_paths[0], dc.TEST_BLANK_CSV)
+        self.assertEqual(args.output_path, dc.TEST_TMP_DIR)
+
+    def test_multiple_files_in_path(self):
+        """Required arguments are provided, and paths are found."""
+        args = PartitionArguments()
+        args.from_params(
+            catalog_name="catalog",
+            input_path=dc.TEST_SMALL_SKY_PARTS_DATA_DIR,
+            input_format="csv",
+            output_path=dc.TEST_TMP_DIR,
+        )
+        self.assertEqual(args.input_path, dc.TEST_SMALL_SKY_PARTS_DATA_DIR)
+        self.assertEqual(len(args.input_paths), 5)
+
+    def test_single_debug_file(self):
+        """Required arguments are provided, and paths are found."""
+        args = PartitionArguments()
+        args.from_params(
+            catalog_name="catalog",
+            debug_input_files=dc.TEST_FORMATS_HEADERS_CSV,
+            input_format="csv",
+            output_path=dc.TEST_TMP_DIR,
+        )
+        self.assertEqual(len(args.input_paths), 1)
+        self.assertEqual(args.input_paths[0], dc.TEST_FORMATS_HEADERS_CSV)
 
 
 if __name__ == "__main__":

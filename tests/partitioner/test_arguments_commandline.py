@@ -1,11 +1,15 @@
 """Tests of command line argument validation"""
 
 import os
+import sys
 import unittest
 
 from partitioner.arguments import PartitionArguments
 
-TEST_DIR = os.path.dirname(__file__)
+# This doesn't feel good, but I'm tired of fighting.
+sys.path.insert(0, "../")
+
+import data.constants as dc
 
 
 class TestArguments(unittest.TestCase):
@@ -38,22 +42,33 @@ class TestArguments(unittest.TestCase):
             "--catalog_name",
             "catalog",
             "--input_path",
-            TEST_DIR,
+            dc.TEST_BLANK_DATA_DIR,
             "--output_path",
-            TEST_DIR,
+            dc.TEST_TMP_DIR,
+            "--input_format",
+            "csv",
         ]
         args = PartitionArguments()
         args.from_command_line(good_args)
-        self.assertEqual(args.input_path, TEST_DIR)
-        self.assertEqual(args.output_path, TEST_DIR)
+        self.assertEqual(args.input_path, dc.TEST_BLANK_DATA_DIR)
+        self.assertEqual(args.output_path, dc.TEST_TMP_DIR)
 
     def test_good_paths_short_names(self):
         """Required arguments are provided, using short names for arguments."""
-        good_args = ["-c", "catalog", "-i", TEST_DIR, "-o", TEST_DIR]
+        good_args = [
+            "-c",
+            "catalog",
+            "-i",
+            dc.TEST_BLANK_DATA_DIR,
+            "-o",
+            dc.TEST_TMP_DIR,
+            "-fmt",
+            "csv",
+        ]
         args = PartitionArguments()
         args.from_command_line(good_args)
-        self.assertEqual(args.input_path, TEST_DIR)
-        self.assertEqual(args.output_path, TEST_DIR)
+        self.assertEqual(args.input_path, dc.TEST_BLANK_DATA_DIR)
+        self.assertEqual(args.output_path, dc.TEST_TMP_DIR)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,23 @@
 """Utility functions for reading and writing files"""
 
+import os
+
 import pandas as pd
 from astropy.table import Table
 
 
-def read_dataframe(path="", file_format="parquet"):
+def read_dataframe(path="", file_format="parquet") -> pd.DataFrame:
     """Read a file in as a dataframe"""
 
-    # load the input file
+    # Perform checks on the provided path
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"File not found at path: {path}")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"Directory found at path - requires regular file: {path}"
+        )
+
+    # Load file using appropriate mechanism
     if "csv" in file_format:
         data_frame = pd.read_csv(path)
     elif "parquet" in file_format:
