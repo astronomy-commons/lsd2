@@ -1,4 +1,7 @@
-# lsd2
+
+<img src="https://user-images.githubusercontent.com/113376043/203642349-4ff18331-6fb4-40da-80dd-b29e234f56c3.png"/>
+# LSD 2
+
 Large Survey Database, v2
 
 This repository is designed to facilitate and enable spatial functionality for extremely large astronomical databases (i.e. querying and crossmatching O(1B) sources). 
@@ -127,11 +130,3 @@ c1.cross_match(
 
 Returns the number of total cross-matches. 
 
-### TODO
-
-* Configure the output of the cross match routine.
-* Consider sources that are located on the edges of neighboring pixels.
-* Consider how evolving catalogs will be updated, as surveying continues.
-* Consider and benchmark other parallel processing frameworks (ray, PySpark, etc).
-* Enable the user to cross-match with already partitioned catalogs.
-   * large data hostings, GAIA, DES, SDSS, Pan-STARRS, etc..
