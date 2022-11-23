@@ -3,6 +3,7 @@
 import numpy as np
 
 import partitioner.histogram as hist
+import partitioner.io_utils as io_utils
 
 
 def _generate_histogram(args):
@@ -19,6 +20,7 @@ def _generate_histogram(args):
             dec_column=args.dec_column,
         )
         raw_histogram = np.add(raw_histogram, partial_histogram)
+
     return raw_histogram
 
 
@@ -26,4 +28,8 @@ def run(args):
     """Partitioner runner"""
     if not args:
         raise ValueError("args is required and should be type PartitionArguments")
-    _generate_histogram(args)
+    raw_histogram = _generate_histogram(args)
+    pixel_map = hist.generate_alignment(
+        raw_histogram, args.highest_healpix_order, args.pixel_threshold
+    )
+    io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)

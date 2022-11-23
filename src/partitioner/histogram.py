@@ -65,7 +65,7 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
     # work forward -
     for index in range(0, len(nested_sums[0])):
         if nested_sums[0][index] > 0 and nested_sums[0][index] <= threshold:
-            nested_alignment[0][index] = (0, index)
+            nested_alignment[0][index] = (0, index, nested_sums[0][index])
 
     for read_order in range(1, highest_order + 1):
         parent_order = read_order - 1
@@ -78,9 +78,14 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
             elif nested_sums[read_order][index] == 0:
                 continue
             elif nested_sums[read_order][index] <= threshold:
-                nested_alignment[read_order][index] = (read_order, index)
+                nested_alignment[read_order][index] = (
+                    read_order,
+                    index,
+                    nested_sums[read_order][index],
+                )
             elif read_order == highest_order:
                 raise ValueError(
-                    f"single pixel count {nested_sums[read_order][index]} exceeds threshold {threshold}"
+                    f"""single pixel count {
+                        nested_sums[read_order][index]} exceeds threshold {threshold}"""
                 )
     return nested_alignment[highest_order]

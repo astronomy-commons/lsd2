@@ -1,3 +1,3 @@
 """Include all modules in this subdirectory"""
 
-from . import constants
+from . import data_paths

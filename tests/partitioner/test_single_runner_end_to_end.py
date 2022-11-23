@@ -2,7 +2,7 @@
 
 
 import partitioner.single_runner as sr
-import tests.constants as dc
+import tests.data_paths as dc
 from partitioner.arguments import PartitionArguments
 
 
