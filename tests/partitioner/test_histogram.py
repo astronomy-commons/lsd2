@@ -1,15 +1,14 @@
 """Tests of histogram calculations"""
 
-import unittest
-
 import numpy.testing as npt
+import pytest
 
 import partitioner.histogram as hist
 import tests.constants as dc
 from partitioner.arguments import PartitionArguments
 
 
-class TestHistograms(unittest.TestCase):
+class TestHistograms:
     """Test histogram calculations"""
 
     def test_small_sky_threshold_same_pixel(self):
@@ -23,11 +22,11 @@ class TestHistograms(unittest.TestCase):
             highest_healpix_order=0,
         )
         result = hist.generate_histogram(args)
-        self.assertEqual(len(result), 12)
+        assert len(result) == 12
 
         expected = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131]
         npt.assert_array_equal(result, expected)
-        self.assertTrue((result == expected).all())
+        assert (result == expected).all()
 
     def test_small_sky_parts_same_pixel(self):
         """Test loading the small sky catalog and partitioning each object into the same large bucket"""
@@ -40,11 +39,11 @@ class TestHistograms(unittest.TestCase):
             highest_healpix_order=0,
         )
         result = hist.generate_histogram(args)
-        self.assertEqual(len(result), 12)
+        assert len(result) == 12
 
         expected = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131]
         npt.assert_array_equal(result, expected)
-        self.assertTrue((result == expected).all())
+        assert (result == expected).all()
 
     def test_column_names_error(self):
         """Test loading file with non-default column names"""
@@ -56,7 +55,7 @@ class TestHistograms(unittest.TestCase):
             output_path=dc.TEST_TMP_DIR,
             highest_healpix_order=0,
         )
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             hist.generate_histogram(args)
 
     def test_column_names(self):
@@ -74,8 +73,8 @@ class TestHistograms(unittest.TestCase):
             highest_healpix_order=0,
         )
         result = hist.generate_histogram(args)
-        self.assertEqual(len(result), 12)
+        assert len(result) == 12
 
         expected = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8]
         npt.assert_array_equal(result, expected)
-        self.assertTrue((result == expected).all())
+        assert (result == expected).all()

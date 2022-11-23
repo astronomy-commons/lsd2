@@ -1,33 +1,34 @@
 """Tests of command line argument validation"""
 
-import unittest
+
+import pytest
 
 import tests.constants as dc
 from partitioner.arguments import PartitionArguments
 
 
-class TestArguments(unittest.TestCase):
+class TestArguments:
     """Test argument parsing and validation from command line parameters"""
 
     def test_none(self):
         """No arguments provided. Should error for required args."""
         empty_args = []
         args = PartitionArguments()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             args.from_command_line(empty_args)
 
     def test_invalid_arguments(self):
         """Arguments are ill-formed."""
         bad_form_args = ["catalog", "path", "path"]
         args = PartitionArguments()
-        with self.assertRaises(SystemExit):
+        with pytest.raises(SystemExit):
             args.from_command_line(bad_form_args)
 
     def test_invalid_path(self):
         """Required arguments are provided, but paths aren't found."""
         bad_path_args = ["-c", "catalog", "-i", "path", "-o", "path"]
         args = PartitionArguments()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             args.from_command_line(bad_path_args)
 
     def test_good_paths(self):
@@ -44,8 +45,8 @@ class TestArguments(unittest.TestCase):
         ]
         args = PartitionArguments()
         args.from_command_line(good_args)
-        self.assertEqual(args.input_path, dc.TEST_BLANK_DATA_DIR)
-        self.assertEqual(args.output_path, dc.TEST_TMP_DIR)
+        assert args.input_path == dc.TEST_BLANK_DATA_DIR
+        assert args.output_path == dc.TEST_TMP_DIR
 
     def test_good_paths_short_names(self):
         """Required arguments are provided, using short names for arguments."""
@@ -61,9 +62,5 @@ class TestArguments(unittest.TestCase):
         ]
         args = PartitionArguments()
         args.from_command_line(good_args)
-        self.assertEqual(args.input_path, dc.TEST_BLANK_DATA_DIR)
-        self.assertEqual(args.output_path, dc.TEST_TMP_DIR)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert args.input_path == dc.TEST_BLANK_DATA_DIR
+        assert args.output_path == dc.TEST_TMP_DIR
