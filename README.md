@@ -1,5 +1,6 @@
 
-<img src="https://user-images.githubusercontent.com/113376043/203642349-4ff18331-6fb4-40da-80dd-b29e234f56c3.png"/>
+<img src="https://user-images.githubusercontent.com/113376043/203642349-4ff18331-6fb4-40da-80dd-b29e234f56c3.png" style="width: 250px"/>
+
 # LSD 2
 
 Large Survey Database, v2
