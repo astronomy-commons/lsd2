@@ -26,6 +26,7 @@ class PartitionArguments:
         self.pixel_threshold = 1_000_000
         self.debug_stats_only = False
 
+        self.runtime = "single"
         self.dask_tmp = ""
 
     def from_command_line(self, cl_args):
@@ -70,20 +71,21 @@ class PartitionArguments:
         # ===========            INPUT COLUMNS            ===========
         group = parser.add_argument_group(
             "INPUT COLUMNS",
-            "Column names in the input source that correspond to spatial attributes used in partitioning",
+            """Column names in the input source that
+            correspond to spatial attributes used in partitioning""",
         )
         group.add_argument(
             "-ra",
             "--ra_column",
             help="column name for the ra (rate of ascension)",
-            default=None,
+            default="ra",
             type=str,
         )
         group.add_argument(
             "-dec",
             "--dec_column",
             help="column name for the dec (declination)",
-            default=None,
+            default="dec",
             type=str,
         )
         group.add_argument(
@@ -104,7 +106,7 @@ class PartitionArguments:
             "-id",
             "--id_column",
             help="column name for the object id",
-            default=None,
+            default="id",
             type=str,
         )
         # ===========           OUTPUT ARGUMENTS          ===========
@@ -146,7 +148,9 @@ class PartitionArguments:
         )
         group.add_argument(
             "--debug_stats_only",
-            help="DEBUGGING FLAG - if set, the pipeline will only fetch statistics about the origin data and will not generate partitioned output",
+            help="""DEBUGGING FLAG -
+            if set, the pipeline will only fetch statistics about the origin data
+            and will not generate partitioned output""",
             action="store_true",
         )
         group.add_argument(
@@ -157,6 +161,14 @@ class PartitionArguments:
         )
         # ===========         EXECUTION ARGUMENTS         ===========
         group = parser.add_argument_group("EXECUTION")
+        group.add_argument(
+            "-r",
+            "--runtime",
+            choices=["single", "dask"],
+            help="the runtime environment option to use for parallelization",
+            default="single",
+        )
+
         group.add_argument(
             "-dt",
             "--dask_tmp",
@@ -182,6 +194,7 @@ class PartitionArguments:
             highest_healpix_order=args.highest_healpix_order,
             pixel_threshold=args.pixel_threshold,
             debug_stats_only=args.debug_stats_only,
+            runtime=args.runtime,
             dask_tmp=args.dask_tmp,
         )
 
@@ -201,6 +214,7 @@ class PartitionArguments:
         highest_healpix_order=10,
         pixel_threshold=1_000_000,
         debug_stats_only=False,
+        runtime="single",
         dask_tmp="",
     ):
         """Use arguments provided in parameters."""
@@ -221,6 +235,7 @@ class PartitionArguments:
         self.pixel_threshold = pixel_threshold
         self.debug_stats_only = debug_stats_only
 
+        self.runtime = runtime
         self.dask_tmp = dask_tmp
 
         self.check_arguments()
