@@ -155,143 +155,192 @@ def _to_hips(df, hipsPath, base_filename):
     return len(df)
 
 
-def _xmatch_mapper(c1_df, ):
-    pass
-
-
-def _cross_match(match_cats, c1_md, c2_md, n_neighbors=1, dthresh=4.0):
-    #input is an array
-    #   match_cats[0] is the pathway to the c1/catalog.parquet
-    #   match cats[1] is the pathway to the c2/catalog.parquet
+def _cross_match2(match_cats, c1_md, c2_md, c1_cols=[], c2_cols=[],  n_neighbors=1, dthresh=0.01):
 
     c1 = match_cats[0]
     c2 = match_cats[1]
-
-    #read parquet files
-    c1_df = pd.read_parquet(c1, engine='pyarrow')
-    c2_df = pd.read_parquet(c2, engine='pyarrow')
 
     c1_order = int(c1.split('Norder')[1].split('/')[0])
     c1_pix = int(c1.split('Npix')[1].split('/')[0])
     c2_order = int(c2.split('Norder')[1].split('/')[0])
     c2_pix = int(c2.split('Npix')[1].split('/')[0])
 
-    if c1_order > c2_order:
-        order, pix = c1_order, c1_pix
-        #cull the c2 sources
-        c2_df['hips_pix'] = hp.ang2pix(2**order, 
-            c2_df[c2_md['ra_kw']].values, 
-            c2_df[c2_md['dec_kw']].values, 
-            lonlat=True, nest=True
-        )
-        c2_df = c2_df.loc[c2_df['hips_pix'] == pix]
-        
-    else:
+    c1_df = pd.read_parquet(c1, engine='pyarrow')
+    c2_df = pd.read_parquet(c2, engine='pyarrow')
+
+    tocull1 = False
+    tocull2 = False
+
+    if c2_order > c1_order:
         order, pix = c2_order, c2_pix
-        #cull the c1 sources
-        c1_df['hips_pix'] = hp.ang2pix(2**order, 
-            c1_df[c1_md['ra_kw']].values, 
-            c1_df[c1_md['dec_kw']].values, 
-            lonlat=True, nest=True
-        )
-        c1_df = c1_df.loc[c1_df['hips_pix'].isin([pix])]
+        tocull1=True
+    else:
+        order, pix = c1_order, c1_pix
+        tocull2=True
 
-    #print(len(c2_df), len(c1_df))
-
-    # find the ra/dec of the smaller pixel (the one at highest order)
     (clon, clat) = hp.pix2ang(hp.order2nside(order), pix, nest=True, lonlat=True)
 
-    #get id, ra, and dec columns
-    id2 = c2_df[c2_md['id_kw']].to_list()
-    ra2 = c2_df[c2_md['ra_kw']].to_list()
-    dec2 = c2_df[c2_md['dec_kw']].to_list()
-    xy2 = np.column_stack(util.gnomonic(ra2, dec2, clon, clat))
-    tree = KDTree(xy2, leaf_size=2)
+    c1_df = util.frame_cull(
+        df=c1_df, df_md=c1_md,
+        order=order, pix=pix,
+        cols=c1_cols,
+        tocull=tocull1
+    )
 
-    matches = {}
+    c2_df = util.frame_cull(
+        df=c2_df, df_md=c2_md,
+        order=order, pix=pix,
+        cols=c2_cols,
+        tocull=tocull2
+    )
 
-    #TODO.. not this! dataframe.apply()!
-    for id1, ra1, dec1 in zip(c1_df[c1_md['id_kw']], c1_df[c1_md['ra_kw']], c1_df[c1_md['dec_kw']]):
-        xy1 = np.column_stack(util.gnomonic(ra1, dec1, clon, clat))
-        dists, inds = tree.query(xy1, k=min(n_neighbors, len(xy2))) 
+    ret = pd.DataFrame()
+    if len(c1_df) and len(c2_df):
 
-        c1matches = []
-        for k,match_idx in enumerate(inds[0]):
-            match = {}
-            match['_M1'] = id1
-            match['_M2'] = id2[match_idx]
-            match['_DIST'] = util.gc_dist(ra1, dec1, ra2[match_idx], dec2[match_idx])
-            match['_LON'] = ra2[match_idx]
-            match['_LAT'] = dec2[match_idx]
-            match['_NR'] = k
-            c1matches.append(match)
+        xy1 = util.frame_gnomonic(c1_df, c1_md, clon, clat)
+        xy2 = util.frame_gnomonic(c2_df, c2_md, clon, clat)
 
-        c1matches = [c1m for c1m in c1matches if c1m['_DIST'] <= dthresh]
-        if c1matches:
-            matches[id1] = c1matches
+        tree = KDTree(xy2, leaf_size=2)
+        dists, inds = tree.query(xy1, k=n_neighbors)
 
-    return len(matches)
+        outIdx = np.arange(len(c1_df)*n_neighbors)
+        leftIdx = outIdx // n_neighbors
+        rightIdx = inds.ravel()
+        out = pd.concat(
+            [
+                c1_df.iloc[leftIdx].reset_index(drop=True),   # select the rows of the left table
+                c2_df.iloc[rightIdx].reset_index(drop=True)  # select the rows of the right table
+            ], axis=1)  # concat the two tables "horizontally" (i.e., join columns, not append rows)
 
+        out["_DIST"] = util.gc_dist(
+            out[c1_md['ra_kw']], out[c1_md['dec_kw']],
+            out[c2_md['ra_kw']], out[c2_md['dec_kw']]
+        )
+
+        ret = out.loc[out['_DIST'] < dthresh]
+        #out = out.loc[out['_DIST'] < dthresh]
+        #ret = len(out)
+
+        del out, dists, inds, outIdx, leftIdx, rightIdx, xy1, xy2
+    del c1_df, c2_df
+    return ret
+
+
+def xmatch_from_daskdf(df, c1_md, c2_md, c1_cols, c2_cols,n_neighbors=1, dthresh=0.01):
+    '''
+    mapped function for calculating a cross_match between a partitioned dataframe 
+     with columns [C1, C2, Order, Pix, ToCull1, ToCull2]
+        C1 is the pathway to the catalog1.parquet file
+        C2 is the pathway to the catalog2.parquet file
+        Order is the healpix order
+        Pix is the healpix pixel at the order for the calculation
+        ToCull1 is a boolean which represents the original C1 file's healpix order > 
+            than C2, thus the number of sources is potentiall 4 times greater than
+            the number of sources in C2. We can optimize the comparison calculation
+            by culling the sources from C1 that aren't in C2's order/pixel
+        ToCull2 the same as ToCull1, but C2 order > C1
+    '''
+
+    vals = zip(
+        df['C1'], 
+        df['C2'],
+        df['Order'],
+        df['Pix'],
+        df['ToCull1'],
+        df['ToCull2']
+    )
+
+    #get the column names for the returning dataframe
+    colnames = util.establish_pd_meta(c1_cols, c2_cols)
+    retdfs = []
+
+    #iterate over the partitioned dataframe
+    #in theory, this should be just one dataframe
+    # TODO: ensure that this just one entry in df, and remove the forloop
+    for c1, c2, order, pix, tocull1, tocull2 in vals:
+
+        #TODO: enforcemetadata=False
+        # try/except is here because when enforcemetadata=True, it passes in 
+        #  a test-dataframe that has values for filepaths as 'foo'/'bar'
+        #  which breaks opening the pandas.read_parquet()
+        try:
+            c1_df = pd.read_parquet(c1, engine='pyarrow')
+            c2_df = pd.read_parquet(c2, engine='pyarrow')
+
+            #get the center lon/lat of the healpix pixel
+            (clon, clat) = hp.pix2ang(hp.order2nside(order), pix, nest=True, lonlat=True)
+
+            #cull the catalog dataframes based on ToCull=True/False
+            # and user defined columns
+            # TODO: select columns in the pd.read_parquet(...) command
+            c1_df = util.frame_cull(
+                df=c1_df, df_md=c1_md,
+                order=order, pix=pix,
+                cols=c1_cols,
+                tocull=tocull1
+            )
+
+            c2_df = util.frame_cull(
+                df=c2_df, df_md=c2_md,
+                order=order, pix=pix,
+                cols=c2_cols,
+                tocull=tocull2
+            )
+            
+            #Sometimes the c1_df or c2_df contain zero sources 
+            # after culling
+            if len(c1_df) and len(c2_df):
+
+                #calculate the xy gnomonic positions from the 
+                # pixel's center for each dataframe
+                xy1 = util.frame_gnomonic(c1_df, c1_md, clon, clat)
+                xy2 = util.frame_gnomonic(c2_df, c2_md, clon, clat)
+
+                #construct the KDTree from the comparative catalog: c2/xy2
+                tree = KDTree(xy2, leaf_size=2)
+                #find the indicies for the nearest neighbors 
+                #this is the cross-match calculation
+                dists, inds = tree.query(xy1, k=n_neighbors)
+
+                #numpy indice magic for the joining of the two catalogs
+                outIdx = np.arange(len(c1_df)*n_neighbors) # index of each row in the output table (0... number of output rows)
+                leftIdx = outIdx // n_neighbors            # index of the corresponding row in the left table (0, 0, 0, 1, 1, 1, 2, 2, 2, ...)
+                rightIdx = inds.ravel()                    # index of the corresponding row in the right table (22, 33, 44, 55, 66, ...)
+                out = pd.concat(
+                    [
+                        c1_df.iloc[leftIdx].reset_index(drop=True),   # select the rows of the left table
+                        c2_df.iloc[rightIdx].reset_index(drop=True)   # select the rows of the right table
+                    ], axis=1)  # concat the two tables "horizontally" (i.e., join columns, not append rows)
+
+                #save the order/pix/and distances for each nearest neighbor
+                out['hips_k'] = order
+                out['hips_pix'] = pix
+                out["_DIST"] =util.gc_dist(
+                    out[c1_md['ra_kw']], out[c1_md['dec_kw']],
+                    out[c2_md['ra_kw']], out[c2_md['dec_kw']]
+                )
+
+                #cull the return dataframe based on the distance threshold
+                out = out.loc[out['_DIST'] < dthresh]
+                retdfs.append(out)
+                #memory management
+                del out, dists, inds, outIdx, leftIdx, rightIdx, xy1, xy2
+
+            else:
+                retdfs.append(pd.DataFrame({}, columns=colnames))
+            del c1_df, c2_df
+
+        except:
+            retdfs.append(pd.DataFrame({}, columns=colnames))
+
+    #if the npartitions are > 1 it will concatenate calculated catalogcrossmatches into a single dataframe to return
+    return pd.concat(retdfs)
 
 
 if __name__ == '__main__':
     import time
     s = time.time()
     client = Client(n_workers=12, threads_per_worker=1)
-    ###run logic
-    td = '/astro/users/sdwyatt/git-clones/HIPS/tests/output/gaia'
-    orders = os.listdir(td)
 
-    #results = []
-    #for k in orders:
-    #    parts =os.listdir(os.path.join(td, k))
-
-    #    y = delayed(_map_reduce)(
-    #        parts=parts, output_dir=td, k=k
-    #    )
-    #    results.append(y)
-
-    #results = dask.compute(*results)
-
-    dds = []
-    for k in orders:
-        npixs = os.listdir(os.path.join(td, k))
-        for pix in npixs:
-            newd = os.path.join(td, k , pix)
-            test_catalog = os.path.join(newd, 'catalog.parquet')
-            if os.path.exists(test_catalog):
-                print(f'removing {test_catalog}')
-                os.remove(test_catalog)
-            #y = delayed(_map_reduce2)()
-            dds.append(newd)
-
-    futures = client.map(_map_reduce2, dds)
-    progress(futures)
-    #dda = dask.array.from_array(dds)
-    #dask.array.map_overlap(_map_reduce2, dda, depth=1, boundary='none').compute()
-
-    #bb = db.from_sequence(dds,partition_size=4).reduction(partial(_map_reduce2), sum, split_every=3)
-    #bb.compute()
-
-    #y = delayed(_map_reduce2)(
-    #    pix=pix, output_dir=newd
-    #)
-
-    #print(len(results))
-    #results = dask.compute(*results)
-
-
-    #reduction(
-    #            partial(
-    #                du._gather_statistics_hpix_hist,
-    #                    k=self.order_k, cache_dir=self.cache_dir, fmt=self.fmt,
-    #                    ra_kw=self.ra_kw, dec_kw=self.dec_kw
-    #                ),
-    #            sum, split_every=3
-
-    #tt = [delayed(_map_reduce)(parts=os.listdir(os.path.join(td, k)), output_dir=td, k=k) for k in orders]
-
-    #d = dd.from_delayed(tt)
-    ###end logic
     e = time.time()
     print('Elapsed time = {}'.format(e-s))

@@ -145,7 +145,123 @@ def gc_dist(lon1, lat1, lon2, lat2):
     lon1 = np.radians(lon1); lat1 = np.radians(lat1)
     lon2 = np.radians(lon2); lat2 = np.radians(lat2)
 
-    return np.degrees(2*np.arcsin(np.sqrt( (np.sin((lat1-lat2)*0.5))**2 + np.cos(lat1)*np.cos(lat2)*(np.sin((lon1-lon2)*0.5))**2 )));
+    return np.degrees(2*np.arcsin(np.sqrt( (np.sin((lat1-lat2)*0.5))**2 + np.cos(lat1)*np.cos(lat2)*(np.sin((lon1-lon2)*0.5))**2 )))
+
+
+def which_cull_and_pixorder(c1, c2):
+    
+    c1_order = int(c1.split('Norder')[1].split('/')[0])
+    c1_pix = int(c1.split('Npix')[1].split('/')[0])
+    c2_order = int(c2.split('Norder')[1].split('/')[0])
+    c2_pix = int(c2.split('Npix')[1].split('/')[0])    
+
+    tocull1 = False
+    tocull2 = False
+
+    if c2_order > c1_order:
+        order, pix = c2_order, c2_pix
+        tocull1=True
+    else:
+        order, pix = c1_order, c1_pix
+        tocull2=True
+
+    return order, pix, tocull1, tocull2
+
+
+def xmatchmap_dict(hp_match_map):
+    c1, c2 = [], []
+    o, p, = [], []
+    tc1, tc2 = [], []
+
+    for m in hp_match_map:
+        c1.append(m[0])
+        c2.append(m[1])
+
+        order, pix, tocull1, tocull2 = which_cull_and_pixorder(m[0], m[1])
+
+        o.append(order)
+        p.append(pix)
+        tc1.append(tocull1)
+        tc2.append(tocull2)
+
+    data = {
+            'C1': c1,
+            'C2': c2,
+            'Order' : o,
+            'Pix' : p,
+            'ToCull1': tc1,
+            'ToCull2': tc2
+    }
+
+    return data
+
+
+def catalog_columns_selector_withdtype(cat_md, cols):
+    expected_cols = {
+        cat_md['ra_kw'] :'f8',
+        cat_md['dec_kw']:'f8',
+        cat_md['id_kw'] :'i8'
+    }
+    if not len(cols):
+        return expected_cols
+    else:
+        for k in expected_cols.keys():
+            if k not in cols.keys():
+                cols[k] = expected_cols[k]
+        return cols
+
+
+def establish_pd_meta(c1_cols, c2_cols):
+    colnames = []
+    colnames.extend(c1_cols)
+    colnames.extend(c2_cols)
+    colnames.extend(['hips_k', 'hips_pix', '_DIST'])
+    return colnames
+
+
+def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
+    #df = dfc.copy()
+    #del dfc
+    if tocull:
+        df['hips_pix'] = hp.ang2pix(2**order, 
+            df[df_md['ra_kw']].values, 
+            df[df_md['dec_kw']].values, 
+            lonlat=True, nest=True
+        )
+        df = df.loc[df['hips_pix'].isin([pix])]
+    
+    #user specifies which columns to return
+    if len(cols):
+        #ensure user doesn't cull the ra,dec,and id columns
+        expected_cols = [
+            df_md['ra_kw'],
+            df_md['dec_kw'],
+            df_md['id_kw']
+        ]
+        for ec in expected_cols:
+            if ec not in cols:
+                cols.append(ec)
+        df = df[cols]
+
+    return df
+
+
+def frame_gnomonic(df, df_md, clon, clat):
+    '''
+    method taken from lsd1
+    '''
+    phi  = np.radians(df[df_md['dec_kw']].values)
+    l    = np.radians(df[df_md['ra_kw']].values)
+    phi1 = np.radians(clat)
+    l0   = np.radians(clon)
+
+    cosc = np.sin(phi1)*np.sin(phi) + np.cos(phi1)*np.cos(phi)*np.cos(l-l0)
+    x = np.cos(phi)*np.sin(l-l0) / cosc
+    y = (np.cos(phi1)*np.sin(phi) - np.sin(phi1)*np.cos(phi)*np.cos(l-l0)) / cosc
+
+    ret = np.column_stack((np.degrees(x), np.degrees(y)))
+    del phi, l, phi1, l0, cosc, x, y
+    return ret
 
 
 def get_csv_urls(url='https://cdn.gea.esac.esa.int/Gaia/gdr2/gaia_source/csv/', fmt='.csv.gz'):
