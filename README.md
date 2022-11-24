@@ -112,22 +112,43 @@ When this runs, it will create two directories in the specified `location` param
 
 It will also create a `meta_data.json` that it contains the basic metadata from the partitioning instatiation and running. 
 
-### Cross-matching (returns n-matches)
+### Cross-matching (returns comput-able `dask.dataframe`)
 
-Once two catalogs have been imported in this hips format, we can perform a basic prototype for cross-matching.
+Once two catalogs have been imported in this hips format, we can perform a basic prototype for cross-matching. The only caveat is that the user must select the columns (besides ra,dec, and id) that will populate the resulting dataframe from the cross-match.
 
 ```python
 client=Client(n_workers=12, threads_per_worker=1)
 
 c1 = hc.Catalog('sdss', location='/path/to/hips/catalog/outputdir')
 c2 = hc.Catalog('gaia', location='/path/to/hips/catalog/outputdir')
-c1.cross_match(
+
+c1_cols = {}
+c2_cols = {'pmra':'f8', 'pmdec':'f8'}
+
+result = c1.cross_match(
   c2,
+  c1_cols=c1_cols,
+  c2_cols=c2_cols,
   n_neighbors=4, #the maximum number of nearest neighbors to locate
   dthresh=1.0.   #the distance threshold (in degrees) that limits a source cross_matching to another catalog source
-  client=client  #the dask-distributed client
 )
 ```
 
-Returns the number of total cross-matches. 
+Returns a `dask.dataframe` of the result. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
 
+```python
+r = result.compute() # performs the cross match computation
+
+r2 = result.assign( #create a new column from the result
+  pm=lambda x: np.sqrt(x.pmra**2 + x.pmdec**2)
+).compute()
+
+r3 = result.assign( #create a new column from the result
+  pm=lambda x: np.sqrt(x.pmra**2 + x.pmdec**2)
+).query( #filter the result 
+  'pm > 1.0'
+).to_parquet( #write the result to a parquet file
+  "path/to/my/parquet/"
+).compute() 
+```
+A list of example use-cases are viewable in the `/examples/hipscat_tests.py` script.
