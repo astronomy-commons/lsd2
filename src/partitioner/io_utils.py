@@ -77,9 +77,11 @@ def write_legacy_metadata(args, histogram, pixel_map):
 
     hips_structure = {}
     for item in pixel_map:
+        if not item:
+            continue
         order = item[0]
         pixel = item[1]
-        if not hips_structure[order]:
+        if order not in hips_structure:
             hips_structure[order] = []
         hips_structure[order].append(pixel)
 

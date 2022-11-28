@@ -1,12 +1,12 @@
 """Tests of histogram calculations"""
 
+import data_paths as dc
 import healpy as hp
 import numpy as np
 import numpy.testing as npt
 import pytest
 
 import partitioner.histogram as hist
-import tests.data_paths as dc
 
 
 def test_small_sky_same_pixel():

@@ -1,8 +1,9 @@
-"""Test rull exection of the un-parallelized runner"""
+"""Test full exection of the un-parallelized runner"""
 
+
+import data_paths as dc
 
 import partitioner.single_runner as sr
-import tests.data_paths as dc
 from partitioner.arguments import PartitionArguments
 
 

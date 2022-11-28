@@ -1,8 +1,8 @@
 """Tests of command line argument validation"""
 
+import data_paths as dc
 import pytest
 
-import tests.data_paths as dc
 from partitioner.arguments import PartitionArguments
 
 

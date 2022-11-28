@@ -3,13 +3,13 @@
 
 import os
 
+import data_paths as dc
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
 
 import partitioner.io_utils as io
-import tests.data_paths as dc
 from partitioner.arguments import PartitionArguments
 
 
@@ -60,8 +60,13 @@ def test_write_legacy_metadata_file():
         '    "n_sources": 131,\n',
         '    "pix_threshold": 1000000,\n',
         '    "urls": [\n',
-        '        "/home/delucchi/git/lsd2/tests/data/small_sky/catalog.csv"\n',
-        "    ]\n",
+        '        "/home/delucchi/git/lsd2/tests/partitioner/data/small_sky/catalog.csv"\n',
+        "    ],\n",
+        '    "hips": {\n',
+        '        "0": [\n',
+        "            11\n",
+        "        ]\n",
+        "    }\n",
         "}\n",
     ]
     expected = "".join(expected_lines)

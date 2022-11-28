@@ -1,9 +1,9 @@
 """Tests of argument validation, in the absense of command line parsing"""
 
 
+import data_paths as dc
 import pytest
 
-import tests.data_paths as dc
 from partitioner.arguments import PartitionArguments
 
 
