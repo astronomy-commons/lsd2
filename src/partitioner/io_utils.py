@@ -64,6 +64,49 @@ class NumpyEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
+def write_json_file(metadata_dictionary, file_name):
+    """Convert metadata_dictionary to a json string and print to file."""
+    dumped_metadata = json.dumps(metadata_dictionary, indent=4, cls=NumpyEncoder)
+    with open(
+        file_name,
+        "w",
+        encoding="utf-8",
+    ) as metadata_file:
+        metadata_file.write(dumped_metadata + "\n")
+
+
+def write_catalog_info(args, histogram):
+    """Write a catalog_info.json file with catalog metadata"""
+    metadata = {}
+    metadata["cat_name"] = args.catalog_name
+    # TODO - versioning
+    metadata["version"] = "0001"
+    # TODO - date formatting
+    metadata["generation_date"] = "0001"
+    metadata["ra_kw"] = args.ra_column
+    metadata["dec_kw"] = args.dec_column
+    metadata["id_kw"] = args.id_column
+    metadata["total_objects"] = histogram.sum()
+    metadata["orders"] = [0, 1]  # TODO
+
+    metadata["pixel_threshold"] = args.pixel_threshold
+
+    metadata_filename = os.path.join(args.catalog_path, "catalog_info.json")
+    write_json_file(metadata, metadata_filename)
+
+
+def write_partition_info(args, pixel_map):
+    """Write all partition data to CSV file."""
+    metadata_filename = os.path.join(args.catalog_path, "partition_info.csv")
+    temp = [i for i in pixel_map if i is not None]
+    print(temp)
+    partitions = np.unique(temp, axis=0)
+    data_frame = pd.DataFrame(partitions)
+    print(data_frame)
+    data_frame.columns = ["order", "pixel", "num_objects"]
+    data_frame.to_csv(metadata_filename, index=False)
+
+
 def write_legacy_metadata(args, histogram, pixel_map):
     """Write a <catalog_name>_meta.json with the format expected by the legacy catalog"""
     metadata = {}
@@ -87,12 +130,7 @@ def write_legacy_metadata(args, histogram, pixel_map):
 
     metadata["hips"] = hips_structure
 
-    dumped_metadata = json.dumps(metadata, indent=4, cls=NumpyEncoder)
-    metadata_filename = os.path.join(args.output_path, f"{args.catalog_name}_meta.json")
-    print(metadata_filename)
-    with open(
-        metadata_filename,
-        "w",
-        encoding="utf-8",
-    ) as metadata_file:
-        metadata_file.write(dumped_metadata + "\n")
+    metadata_filename = os.path.join(
+        args.catalog_path, f"{args.catalog_name}_meta.json"
+    )
+    write_json_file(metadata, metadata_filename)

@@ -33,3 +33,5 @@ def run(args):
         raw_histogram, args.highest_healpix_order, args.pixel_threshold
     )
     io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)
+    io_utils.write_catalog_info(args, raw_histogram)
+    io_utils.write_partition_info(args, pixel_map)

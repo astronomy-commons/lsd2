@@ -21,6 +21,7 @@ class PartitionArguments:
         self.id_column = ""
 
         self.output_path = ""
+        self.catalog_path = ""
         self.overwrite = False
         self.highest_healpix_order = 10
         self.pixel_threshold = 1_000_000
@@ -262,6 +263,9 @@ class PartitionArguments:
             raise ValueError("output_path is required")
         if not os.path.exists(self.output_path):
             raise ValueError("output_path not found on local storage")
+        self.catalog_path = os.path.join(self.output_path, self.catalog_name)
+        if not os.path.exists(self.catalog_path):
+            os.makedirs(self.catalog_path, exist_ok=True)
 
         # Basic checks complete - make more checks and create directories where necessary
         if self.input_path:

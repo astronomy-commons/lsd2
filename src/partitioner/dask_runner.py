@@ -4,6 +4,7 @@ import numpy as np
 from dask.distributed import Client, progress
 
 import partitioner.histogram as hist
+import partitioner.io_utils as io_utils
 
 
 def _generate_histogram(args, client):
@@ -34,4 +35,10 @@ def run(args):
         n_workers=1,
         threads_per_worker=1,
     )
-    _generate_histogram(args, client)
+    raw_histogram = _generate_histogram(args, client)
+    pixel_map = hist.generate_alignment(
+        raw_histogram, args.highest_healpix_order, args.pixel_threshold
+    )
+    io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)
+    io_utils.write_catalog_info(args, raw_histogram)
+    io_utils.write_partition_info(args, pixel_map)
