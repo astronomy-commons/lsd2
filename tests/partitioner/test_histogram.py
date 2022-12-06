@@ -56,7 +56,7 @@ def test_column_names():
 
 
 def test_alignment_small_sky_order0():
-    """Create alignment from small sky's distribution at order 2"""
+    """Create alignment from small sky's distribution at order 0"""
     initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
     result = hist.generate_alignment(initial_histogram, 0, 250)
 

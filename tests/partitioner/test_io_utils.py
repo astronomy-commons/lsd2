@@ -79,7 +79,7 @@ def test_write_json_file():
 
 
 def test_write_legacy_metadata_file():
-    """Test that we can write out the older version of the partiion metadata"""
+    """Test that we can write out the older version of the partition metadata"""
     expected_lines = [
         "{",
         '    "cat_name": "small_sky",',
