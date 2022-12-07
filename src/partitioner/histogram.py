@@ -55,7 +55,6 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
         parent_order = read_order - 1
         for index in range(0, len(nested_sums[read_order])):
             parent_pixel = index >> 2
-            # print(f"{read_order} : {index} : {parent_order} : {parent_pixel}")
             nested_sums[parent_order][parent_pixel] += nested_sums[read_order][index]
 
     nested_alignment = []

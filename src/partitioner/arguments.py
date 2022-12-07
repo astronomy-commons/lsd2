@@ -2,6 +2,7 @@
 import argparse
 import glob
 import os
+import time
 
 
 class PartitionArguments:
@@ -29,6 +30,8 @@ class PartitionArguments:
 
         self.runtime = "single"
         self.dask_tmp = ""
+
+        self.tmp_dir = ""
 
     def from_command_line(self, cl_args):
         """Parse arguments from the command line"""
@@ -279,3 +282,9 @@ class PartitionArguments:
             for test_path in self.input_paths:
                 if not os.path.exists(test_path):
                     raise FileNotFoundError(f"{test_path} not found on local storage")
+
+        tmp_folder = f"{self.catalog_name}-{int(time.time())}"
+        if self.dask_tmp:
+            self.tmp_dir = os.path.join(self.dask_tmp, tmp_folder)
+        else:
+            self.tmp_dir = os.path.join(self.output_path, tmp_folder)

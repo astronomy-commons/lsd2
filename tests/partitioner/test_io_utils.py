@@ -3,6 +3,7 @@
 
 import os
 import re
+import tempfile
 
 import data_paths as dc
 import numpy as np
@@ -99,7 +100,9 @@ def test_write_json_file():
     dictionary["first_number"] = 1
     dictionary["first_five_fib"] = [1, 1, 2, 3, 5]
 
-    json_filename = os.path.join(dc.TEST_TMP_DIR, "dictionary.json")
+    tmp_dir = tempfile.mkdtemp()
+
+    json_filename = os.path.join(tmp_dir, "dictionary.json")
     io.write_json_file(dictionary, json_filename)
     assert_file_matches(expected_lines, json_filename)
 
@@ -119,12 +122,13 @@ def test_write_catalog_info():
         "}",
     ]
 
+    tmp_dir = tempfile.mkdtemp()
     args = PartitionArguments()
     args.from_params(
         catalog_name="small_sky",
         input_path=dc.TEST_SMALL_SKY_DATA_DIR,
         input_format="csv",
-        output_path=dc.TEST_TMP_DIR,
+        output_path=tmp_dir,
         highest_healpix_order=0,
         ra_column="ra",
         dec_column="dec",
@@ -132,7 +136,7 @@ def test_write_catalog_info():
     initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
 
     io.write_catalog_info(args, initial_histogram)
-    metadata_filename = os.path.join(dc.TEST_TMP_DIR, "catalog_info.json")
+    metadata_filename = os.path.join(tmp_dir, "small_sky", "catalog_info.json")
     assert_file_matches(expected_lines, metadata_filename)
 
 
@@ -142,13 +146,13 @@ def test_write_partition_info():
         "order,pixel,num_objects",
         "0,11,131",
     ]
-
+    tmp_dir = tempfile.mkdtemp()
     args = PartitionArguments()
     args.from_params(
         catalog_name="small_sky",
         input_path=dc.TEST_SMALL_SKY_DATA_DIR,
         input_format="csv",
-        output_path=dc.TEST_TMP_DIR,
+        output_path=tmp_dir,
         highest_healpix_order=0,
         ra_column="ra",
         dec_column="dec",
@@ -156,7 +160,7 @@ def test_write_partition_info():
     pixel_map = np.full(12, None)
     pixel_map[11] = (0, 11, 131)
     io.write_partition_info(args, pixel_map)
-    metadata_filename = os.path.join(dc.TEST_TMP_DIR, "small_sky", "partition_info.csv")
+    metadata_filename = os.path.join(tmp_dir, "small_sky", "partition_info.csv")
     assert_file_matches(expected_lines, metadata_filename)
 
 
@@ -180,13 +184,13 @@ def test_write_legacy_metadata_file():
         "    }",
         "}",
     ]
-
+    tmp_dir = tempfile.mkdtemp()
     args = PartitionArguments()
     args.from_params(
         catalog_name="small_sky",
         input_path=dc.TEST_SMALL_SKY_DATA_DIR,
         input_format="csv",
-        output_path=dc.TEST_TMP_DIR,
+        output_path=tmp_dir,
         highest_healpix_order=0,
         ra_column="ra",
         dec_column="dec",
@@ -197,6 +201,6 @@ def test_write_legacy_metadata_file():
 
     io.write_legacy_metadata(args, initial_histogram, pixel_map)
 
-    metadata_filename = os.path.join(dc.TEST_TMP_DIR, "small_sky_meta.json")
+    metadata_filename = os.path.join(tmp_dir, "small_sky", "small_sky_meta.json")
 
     assert_file_matches(expected_lines, metadata_filename)

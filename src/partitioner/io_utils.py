@@ -5,6 +5,7 @@ import os
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 from astropy.table import Table
 
 
@@ -87,7 +88,7 @@ def write_catalog_info(args, histogram):
     metadata["dec_kw"] = args.dec_column
     metadata["id_kw"] = args.id_column
     metadata["total_objects"] = histogram.sum()
-    metadata["orders"] = [0, 1]  # TODO
+    # metadata["orders"] = [0, 1]  # TODO
 
     metadata["pixel_threshold"] = args.pixel_threshold
 
@@ -99,10 +100,8 @@ def write_partition_info(args, pixel_map):
     """Write all partition data to CSV file."""
     metadata_filename = os.path.join(args.catalog_path, "partition_info.csv")
     temp = [i for i in pixel_map if i is not None]
-    print(temp)
     partitions = np.unique(temp, axis=0)
     data_frame = pd.DataFrame(partitions)
-    print(data_frame)
     data_frame.columns = ["order", "pixel", "num_objects"]
     data_frame.to_csv(metadata_filename, index=False)
 
@@ -134,3 +133,26 @@ def write_legacy_metadata(args, histogram, pixel_map):
         args.catalog_path, f"{args.catalog_name}_meta.json"
     )
     write_json_file(metadata, metadata_filename)
+
+
+def concatenate_parquet_files(input_directories, output_file_name="", sort_by=""):
+    """Concatenate parquet files into a single parquet file.
+
+    Args:
+        input_directories(`obj`:str list): paths to all input files
+        output_file_name (str): fully-specified path to the output file
+        sort_by (optional str): if specified, sort by the indicated sorting
+    Returns:
+        count of rows written to the `output_file`.
+    """
+
+    tables = []
+    for path in input_directories:
+        tables.append(pa.parquet.read_table(path))
+    merged_table = pa.concat_tables(tables)
+
+    pa.parquet.write_table(merged_table, where=output_file_name)
+
+    print(output_file_name)
+
+    return len(merged_table)
