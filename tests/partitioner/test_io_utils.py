@@ -2,10 +2,10 @@
 
 
 import os
-import re
 import tempfile
 
 import data_paths as dc
+import file_testing as ft
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -51,31 +51,6 @@ def test_read_wrong_fileformat():
         io.read_dataframe(dc.TEST_SMALL_SKY_CSV, "parquet")
 
 
-def assert_file_matches(expected_lines, file_name):
-    """
-    Convenience method to read a text file
-    and compare the contents, line for line,
-    against regular expressions.
-
-    It can be easier to see differences in indivudual lines
-    when file contents grow to be large.
-    """
-    assert os.path.exists(file_name)
-    metadata_file = open(
-        file_name,
-        "r",
-        encoding="utf-8",
-    )
-
-    contents = metadata_file.readlines()
-
-    assert len(expected_lines) == len(contents)
-    for i, expected in enumerate(expected_lines):
-        assert re.match(expected, contents[i])
-
-    metadata_file.close()
-
-
 def test_write_json_file():
     """Test of arbitrary json dictionary with strings and numbers"""
 
@@ -104,7 +79,7 @@ def test_write_json_file():
 
     json_filename = os.path.join(tmp_dir, "dictionary.json")
     io.write_json_file(dictionary, json_filename)
-    assert_file_matches(expected_lines, json_filename)
+    ft.assert_text_file_matches(expected_lines, json_filename)
 
 
 def test_write_catalog_info():
@@ -137,7 +112,7 @@ def test_write_catalog_info():
 
     io.write_catalog_info(args, initial_histogram)
     metadata_filename = os.path.join(tmp_dir, "small_sky", "catalog_info.json")
-    assert_file_matches(expected_lines, metadata_filename)
+    ft.assert_text_file_matches(expected_lines, metadata_filename)
 
 
 def test_write_partition_info():
@@ -161,7 +136,7 @@ def test_write_partition_info():
     pixel_map[11] = (0, 11, 131)
     io.write_partition_info(args, pixel_map)
     metadata_filename = os.path.join(tmp_dir, "small_sky", "partition_info.csv")
-    assert_file_matches(expected_lines, metadata_filename)
+    ft.assert_text_file_matches(expected_lines, metadata_filename)
 
 
 def test_write_legacy_metadata_file():
@@ -203,4 +178,107 @@ def test_write_legacy_metadata_file():
 
     metadata_filename = os.path.join(tmp_dir, "small_sky", "small_sky_meta.json")
 
-    assert_file_matches(expected_lines, metadata_filename)
+    ft.assert_text_file_matches(expected_lines, metadata_filename)
+
+
+def test_concatenate_parquet_files_1input():
+    """Test that concatenating a single parquet file gets the same IDs"""
+    tmp_dir = tempfile.mkdtemp()
+
+    output_file = os.path.join(tmp_dir, "combined.parquet")
+
+    rows_written = io.concatenate_parquet_files(
+        [dc.TEST_PARQUET_SHARDS_PART0], output_file
+    )
+
+    assert rows_written == 7
+
+    expected_ids = [780, 787, 792, 794, 795, 797, 801]
+    ft.assert_parquet_file_ids(output_file, "id", expected_ids)
+
+
+def test_concatenate_parquet_files_2input():
+    """Test that concatenating two parquet files gets both sets of IDs"""
+    tmp_dir = tempfile.mkdtemp()
+
+    output_file = os.path.join(tmp_dir, "combined.parquet")
+
+    rows_written = io.concatenate_parquet_files(
+        [dc.TEST_PARQUET_SHARDS_PART2, dc.TEST_PARQUET_SHARDS_PART0],
+        output_file_name=output_file,
+    )
+
+    assert rows_written == 15
+    # fmt: off
+    expected_ids = [758, 760, 766, 768, 771, 772,
+                    775, 776, 780, 787, 792, 794,
+                    795, 797, 801]
+    # fmt: on
+    ft.assert_parquet_file_ids(output_file, "id", expected_ids)
+
+
+def test_concatenate_parquet_files_2input_sorting():
+    """Test that concatenating two parquet files gets both sets of IDs, with sorting"""
+    tmp_dir = tempfile.mkdtemp()
+
+    output_file = os.path.join(tmp_dir, "combined.parquet")
+
+    rows_written = io.concatenate_parquet_files(
+        [dc.TEST_PARQUET_SHARDS_PART0, dc.TEST_PARQUET_SHARDS_PART2],
+        output_file_name=output_file,
+        sorting="id",
+    )
+
+    assert rows_written == 15
+
+    # fmt:off
+    expected_ids = [758, 760, 766, 768, 771, 772, 775, 776, 780, 787,
+                    792, 794, 795, 797, 801]
+    # fmt:on
+    ft.assert_parquet_file_ids(output_file, "id", expected_ids)
+
+
+def test_concatenate_parquet_files_2input_sorting_desc():
+    """
+    Test that concatenating two parquet files gets both sets of IDs,
+    sorting the IDs in descending order (largest to smallest)
+    """
+    tmp_dir = tempfile.mkdtemp()
+
+    output_file = os.path.join(tmp_dir, "combined.parquet")
+
+    rows_written = io.concatenate_parquet_files(
+        [dc.TEST_PARQUET_SHARDS_PART0, dc.TEST_PARQUET_SHARDS_PART2],
+        output_file_name=output_file,
+        sorting=[("id", "descending")],
+    )
+
+    assert rows_written == 15
+    # fmt:off
+    expected_ids = [801, 797, 795, 794, 792, 787, 780, 776, 775, 772,
+                    771, 768, 766, 760, 758]
+    # fmt:on
+    ft.assert_parquet_file_ids(output_file, "id", expected_ids)
+
+
+def test_concatenate_parquet_files_directory_input():
+    """Test that concatenating entire directory results in all IDs"""
+    tmp_dir = tempfile.mkdtemp()
+
+    output_file = os.path.join(tmp_dir, "combined.parquet")
+
+    rows_written = io.concatenate_parquet_files(
+        [dc.TEST_PARQUET_SHARDS_DATA_DIR],
+        output_file_name=output_file,
+        sorting="id",
+    )
+
+    assert rows_written == 42
+
+    # fmt:off
+    expected_ids = [703, 707, 716, 718, 723, 729, 730, 733, 734, 735, 736,
+                    738, 739, 747, 748, 750, 758, 760, 766, 768, 771, 772,
+                    775, 776, 780, 787, 792, 794, 795, 797, 801, 804, 807,
+                    810, 811, 815, 816, 817, 818, 822, 826, 830]
+    # fmt:on
+    ft.assert_parquet_file_ids(output_file, "id", expected_ids)

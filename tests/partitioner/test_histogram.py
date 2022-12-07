@@ -66,6 +66,19 @@ def test_alignment_small_sky_order0():
     npt.assert_array_equal(result, expected)
 
 
+def test_alignment_small_sky_order1():
+    """Create alignment from small sky's distribution at order 1"""
+    initial_histogram = hist.empty_histogram(1)
+    filled_pixels = [42, 29, 42, 18]
+    initial_histogram[44:] = filled_pixels[:]
+    result = hist.generate_alignment(initial_histogram, 1, 250)
+
+    expected = np.full(48, None)
+    expected[44:] = [(0, 11, 131), (0, 11, 131), (0, 11, 131), (0, 11, 131)]
+
+    npt.assert_array_equal(result, expected)
+
+
 def test_alignment_small_sky_order2():
     """Create alignment from small sky's distribution at order 2"""
     initial_histogram = hist.empty_histogram(2)

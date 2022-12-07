@@ -135,13 +135,13 @@ def write_legacy_metadata(args, histogram, pixel_map):
     write_json_file(metadata, metadata_filename)
 
 
-def concatenate_parquet_files(input_directories, output_file_name="", sort_by=""):
+def concatenate_parquet_files(input_directories, output_file_name="", sorting=""):
     """Concatenate parquet files into a single parquet file.
 
     Args:
         input_directories(`obj`:str list): paths to all input files
         output_file_name (str): fully-specified path to the output file
-        sort_by (optional str): if specified, sort by the indicated sorting
+        sorting (optional str): if specified, sort by the indicated sorting
     Returns:
         count of rows written to the `output_file`.
     """
@@ -150,6 +150,8 @@ def concatenate_parquet_files(input_directories, output_file_name="", sort_by=""
     for path in input_directories:
         tables.append(pa.parquet.read_table(path))
     merged_table = pa.concat_tables(tables)
+    if sorting:
+        merged_table = merged_table.sort_by(sorting)
 
     pa.parquet.write_table(merged_table, where=output_file_name)
 

@@ -79,15 +79,18 @@ def reduce_shards(
     destination_pixel_number,
     destination_pixel_size,
     output_path,
+    id_column,
 ):
     """something"""
     print(output_path)
 
-    destination_file = os.path.join(
+    destination_dir = os.path.join(
         output_path,
         f"Norder{destination_pixel_order}/Npix{destination_pixel_number}",
-        "catalog.parquet",
     )
+    os.makedirs(destination_dir, exist_ok=True)
+
+    destination_file = os.path.join(destination_dir, "catalog.parquet")
 
     input_directories = []
 
@@ -96,11 +99,14 @@ def reduce_shards(
         input_directories.append(pixel_dir)
 
     rows_written = concatenate_parquet_files(
-        input_directories=input_directories, output_file_name=destination_file
+        input_directories=input_directories,
+        output_file_name=destination_file,
+        sorting=id_column,
     )
 
     if rows_written != destination_pixel_size:
         raise ValueError(
-            f"Unexpected number of objects at pixel ({destination_pixel_order}, {destination_pixel_number})."
+            "Unexpected number of objects at pixel "
+            f"({destination_pixel_order}, {destination_pixel_number})."
             f" Expected {destination_pixel_size}, wrote {rows_written}"
         )

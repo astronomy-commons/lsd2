@@ -80,3 +80,24 @@ def test_map_small_sky_part_order1():
     file_name = os.path.join(cache_path, "pixel_47", "shard_0.parquet")
     expected_ids = [702, 721]
     ft.assert_parquet_file_ids(file_name, "id", expected_ids)
+
+
+def test_reduce_order0():
+    """Test reducing into one large pixel"""
+
+    tmp_dir = tempfile.mkdtemp()
+
+    mr.reduce_shards(
+        cache_path=dc.TEST_PARQUET_SHARDS_DIR,
+        origin_pixel_numbers=[44, 45, 46, 47],
+        destination_pixel_order=0,
+        destination_pixel_number=11,
+        destination_pixel_size=131,
+        output_path=tmp_dir,
+        id_column="id",
+    )
+
+    output_file = os.path.join(tmp_dir, "Norder0/Npix11", "catalog.parquet")
+
+    expected_ids = [*range(700, 831)]
+    ft.assert_parquet_file_ids(output_file, "id", expected_ids)
