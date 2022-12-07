@@ -86,7 +86,7 @@ def reduce_shards(
 
     destination_dir = os.path.join(
         output_path,
-        f"Norder{destination_pixel_order}/Npix{destination_pixel_number}",
+        f"Norder{int(destination_pixel_order)}/Npix{int(destination_pixel_number)}",
     )
     os.makedirs(destination_dir, exist_ok=True)
 

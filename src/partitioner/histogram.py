@@ -88,3 +88,22 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
                         nested_sums[read_order][index]} exceeds threshold {threshold}"""
                 )
     return nested_alignment[highest_order]
+
+
+def generate_destination_pixel_map(pixel_map):
+    """Generate mapping from destination pixel to all the constituent pixels"""
+
+    non_none_elements = [i for i in pixel_map if i is not None]
+    unique_pixels = np.unique(non_none_elements, axis=0)
+
+    result = {}
+    for pixel in unique_pixels:
+        source_pixels = []
+        for i, source in enumerate(pixel_map):
+            if not source:
+                continue
+            if source[0] == pixel[0] and source[1] == pixel[1]:
+                source_pixels.append(i)
+        result[tuple(pixel)] = source_pixels
+
+    return result

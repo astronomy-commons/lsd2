@@ -117,3 +117,16 @@ def test_alignment_even_sky():
     # everything maps to order 5, given the density
     for mapping in result:
         assert mapping[0] == 5
+
+
+def test_destination_pixel_map_order1():
+    """Create destination pixel map for small sky at order 1"""
+
+    alignment = np.full(48, None)
+    alignment[44:] = [(0, 11, 131), (0, 11, 131), (0, 11, 131), (0, 11, 131)]
+
+    expected = {tuple([0, 11, 131]): [44, 45, 46, 47]}
+
+    result = hist.generate_destination_pixel_map(alignment)
+
+    npt.assert_array_equal(result, expected)

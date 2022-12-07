@@ -36,6 +36,22 @@ def _generate_histogram(args):
     return raw_histogram
 
 
+def reduce_pixels(args, pixel_map):
+    """Loop over destination pixels and merge into parquet files"""
+    destination_pixel_map = hist.generate_destination_pixel_map(pixel_map)
+
+    for destination_pixel, source_pixels in destination_pixel_map.items():
+        mr.reduce_shards(
+            cache_path=args.tmp_dir,
+            origin_pixel_numbers=source_pixels,
+            destination_pixel_order=destination_pixel[0],
+            destination_pixel_number=destination_pixel[1],
+            destination_pixel_size=destination_pixel[2],
+            output_path=args.catalog_path,
+            id_column=args.id_column,
+        )
+
+
 def run(args):
     """Partitioner runner"""
     if not args:
@@ -47,3 +63,6 @@ def run(args):
     io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)
     io_utils.write_catalog_info(args, raw_histogram)
     io_utils.write_partition_info(args, pixel_map)
+
+    if not args.debug_stats_only:
+        reduce_pixels(args, pixel_map)
