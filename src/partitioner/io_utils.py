@@ -66,7 +66,7 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def write_json_file(metadata_dictionary, file_name):
-    """Convert metadata_dictionary to a json string and print to file."""
+    """Convert metadata_dictionary to a json string and write to file."""
     dumped_metadata = json.dumps(metadata_dictionary, indent=4, cls=NumpyEncoder)
     with open(
         file_name,
@@ -154,7 +154,5 @@ def concatenate_parquet_files(input_directories, output_file_name="", sorting=""
         merged_table = merged_table.sort_by(sorting)
 
     pa.parquet.write_table(merged_table, where=output_file_name)
-
-    print(output_file_name)
 
     return len(merged_table)

@@ -1,6 +1,7 @@
 """Partitioner runner that doesn't use any parallelization mechanism"""
 
 import numpy as np
+from tqdm import tqdm
 
 import partitioner.histogram as hist
 import partitioner.io_utils as io_utils
@@ -11,7 +12,7 @@ def _generate_histogram(args):
     """Generate a raw histogram of object counts in each healpix pixel"""
 
     raw_histogram = hist.empty_histogram(args.highest_healpix_order)
-    for i, file_path in enumerate(args.input_paths):
+    for i, file_path in enumerate(tqdm(args.input_paths, desc="Mapping ")):
         if args.debug_stats_only:
             partial_histogram = hist.generate_partial_histogram(
                 file_path=file_path,
@@ -40,7 +41,9 @@ def reduce_pixels(args, pixel_map):
     """Loop over destination pixels and merge into parquet files"""
     destination_pixel_map = hist.generate_destination_pixel_map(pixel_map)
 
-    for destination_pixel, source_pixels in destination_pixel_map.items():
+    for destination_pixel, source_pixels in tqdm(
+        destination_pixel_map.items(), desc="Reducing"
+    ):
         mr.reduce_shards(
             cache_path=args.tmp_dir,
             origin_pixel_numbers=source_pixels,

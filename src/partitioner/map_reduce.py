@@ -82,8 +82,6 @@ def reduce_shards(
     id_column,
 ):
     """something"""
-    print(output_path)
-
     destination_dir = os.path.join(
         output_path,
         f"Norder{int(destination_pixel_order)}/Npix{int(destination_pixel_number)}",

@@ -13,6 +13,7 @@ if __name__ == "__main__":
         dec_column="decl",
         id_column="diaObjectId",
         pixel_threshold=1_000_000,
+        highest_healpix_order=6,
         output_path="/home/delucchi/xmatch/catalogs/",
     )
     sr.run(args)
