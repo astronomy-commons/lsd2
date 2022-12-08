@@ -37,9 +37,8 @@ def _generate_histogram(args):
     return raw_histogram
 
 
-def reduce_pixels(args, pixel_map):
+def reduce_pixels(args, destination_pixel_map):
     """Loop over destination pixels and merge into parquet files"""
-    destination_pixel_map = hist.generate_destination_pixel_map(pixel_map)
 
     for destination_pixel, source_pixels in tqdm(
         destination_pixel_map.items(), desc="Reducing"
@@ -68,4 +67,7 @@ def run(args):
     io_utils.write_partition_info(args, pixel_map)
 
     if not args.debug_stats_only:
-        reduce_pixels(args, pixel_map)
+        destination_pixel_map = hist.generate_destination_pixel_map(
+            raw_histogram, pixel_map
+        )
+        reduce_pixels(args, destination_pixel_map)

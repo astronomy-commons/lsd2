@@ -103,6 +103,7 @@ def write_partition_info(args, pixel_map):
     partitions = np.unique(temp, axis=0)
     data_frame = pd.DataFrame(partitions)
     data_frame.columns = ["order", "pixel", "num_objects"]
+    data_frame = data_frame.astype(int)
     data_frame.to_csv(metadata_filename, index=False)
 
 

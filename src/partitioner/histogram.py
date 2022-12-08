@@ -90,7 +90,7 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
     return nested_alignment[highest_order]
 
 
-def generate_destination_pixel_map(pixel_map):
+def generate_destination_pixel_map(histogram, pixel_map):
     """Generate mapping from destination pixel to all the constituent pixels"""
 
     non_none_elements = [i for i in pixel_map if i is not None]
@@ -102,7 +102,7 @@ def generate_destination_pixel_map(pixel_map):
         for i, source in enumerate(pixel_map):
             if not source:
                 continue
-            if source[0] == pixel[0] and source[1] == pixel[1]:
+            if source[0] == pixel[0] and source[1] == pixel[1] and histogram[i] > 0:
                 source_pixels.append(i)
         result[tuple(pixel)] = source_pixels
 

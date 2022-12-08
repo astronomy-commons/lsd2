@@ -125,8 +125,12 @@ def test_destination_pixel_map_order1():
     alignment = np.full(48, None)
     alignment[44:] = [(0, 11, 131), (0, 11, 131), (0, 11, 131), (0, 11, 131)]
 
-    expected = {tuple([0, 11, 131]): [44, 45, 46, 47]}
+    initial_histogram = hist.empty_histogram(1)
+    filled_pixels = [51, 29, 51, 0]
+    initial_histogram[44:] = filled_pixels[:]
 
-    result = hist.generate_destination_pixel_map(alignment)
+    expected = {tuple([0, 11, 131]): [44, 45, 46]}
+
+    result = hist.generate_destination_pixel_map(initial_histogram, alignment)
 
     npt.assert_array_equal(result, expected)
