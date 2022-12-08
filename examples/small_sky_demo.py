@@ -12,7 +12,7 @@ if __name__ == "__main__":
             catalog_name="small_sky",
             input_path="/home/delucchi/git/lsd2/tests/partitioner/data/small_sky_parts/",
             input_format="csv",
-            output_path=tmp_dir,
+            output_path="/home/delucchi/xmatch/catalogs/",
             highest_healpix_order=1,
             ra_column="ra",
             dec_column="dec",
