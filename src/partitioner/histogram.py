@@ -97,7 +97,6 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
         parent_order = read_order - 1
         for index in range(0, len(nested_sums[read_order])):
             parent_pixel = index >> 2
-            # print(f"{read_order} : {index} : {parent_order} : {parent_pixel}")
             nested_sums[parent_order][parent_pixel] += nested_sums[read_order][index]
 
     nested_alignment = []
@@ -105,15 +104,13 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
         nested_alignment.append(np.full(hp.order2npix(i), None))
 
     # work forward - determine if we should map to a lower order pixel, this pixel, or keep looking.
-    for index in range(0, len(nested_sums[0])):
-        if nested_sums[0][index] > 0 and nested_sums[0][index] <= threshold:
-            nested_alignment[0][index] = (0, index, nested_sums[0][index])
-
-    for read_order in range(1, highest_order + 1):
+    for read_order in range(0, highest_order + 1):
         parent_order = read_order - 1
         for index in range(0, len(nested_sums[read_order])):
-            parent_pixel = index >> 2
-            parent_alignment = nested_alignment[parent_order][parent_pixel]
+            parent_alignment = None
+            if parent_order >=0:
+                parent_pixel = index >> 2
+                parent_alignment = nested_alignment[parent_order][parent_pixel]
 
             if parent_alignment:
                 nested_alignment[read_order][index] = parent_alignment

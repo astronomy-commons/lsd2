@@ -55,6 +55,26 @@ def test_column_names():
     assert (result == expected).all()
 
 
+def test_alignment_wrong_size():
+    """Check that the method raises error when the input histogram is not the expected size."""
+    initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
+    with pytest.raises(ValueError):
+        hist.generate_alignment(initial_histogram, 0, 250)
+
+def test_alignment_exceeds_threshold_order0():
+    """Check that the method raises error when some pixel exceeds the threshold."""
+    initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
+    with pytest.raises(ValueError):
+        hist.generate_alignment(initial_histogram, 0, 20)
+
+def test_alignment_exceeds_threshold_order2():
+    """Check that the method raises error when some pixel exceeds the threshold."""
+    initial_histogram = hist.empty_histogram(2)
+    filled_pixels = [4, 11, 14, 13, 5, 7, 8, 9, 11, 23, 4, 4, 17, 0, 1, 0]
+    initial_histogram[176:] = filled_pixels[:]
+    with pytest.raises(ValueError):
+        hist.generate_alignment(initial_histogram, 2, 20)
+
 def test_alignment_small_sky_order0():
     """Create alignment from small sky's distribution at order 0"""
     initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
