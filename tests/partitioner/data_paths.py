@@ -58,7 +58,3 @@ TEST_PARQUET_SHARDS_PART4 = os.path.join(
 # ./test_formats - special formats
 TEST_FORMATS_DIR = os.path.join(TEST_DATA_DIR, "test_formats")
 TEST_FORMATS_HEADERS_CSV = os.path.join(TEST_FORMATS_DIR, "headers.csv")
-
-# /.tmp - general use temp directory
-TEST_TMP_DIR = os.path.join(TEST_DATA_DIR, "tmp")
-os.makedirs(TEST_TMP_DIR, exist_ok=True)
