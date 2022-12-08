@@ -2,7 +2,7 @@
 
 import tempfile
 
-import partitioner.single_runner as sr
+import partitioner.dask_runner as dr
 from partitioner.arguments import PartitionArguments
 
 if __name__ == "__main__":
@@ -16,7 +16,9 @@ if __name__ == "__main__":
             dec_column="decl",
             id_column="diaObjectId",
             pixel_threshold=1_000_000,
+            dask_tmp=tmp_dir,
+            runtime="dask",
             highest_healpix_order=6,
             output_path="/home/delucchi/xmatch/catalogs/",
         )
-        sr.run(args)
+        dr.run(args)
