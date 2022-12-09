@@ -27,7 +27,7 @@ def test_small_sky_same_pixel():
 
 
 def test_column_names_error():
-    """Test loading file with non-default column names (without specifying column names)"""
+    """Test loading file with non-default column names"""
     with pytest.raises(ValueError):
         hist.generate_partial_histogram(
             file_path=dc.TEST_FORMATS_HEADERS_CSV,
@@ -55,33 +55,26 @@ def test_column_names():
     assert (result == expected).all()
 
 
-def test_alignment_wrong_size():
-    """Check that the method raises error when the input histogram is not the expected size."""
-    initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
-    with pytest.raises(ValueError):
-        hist.generate_alignment(initial_histogram, 0, 250)
-
-def test_alignment_exceeds_threshold_order0():
-    """Check that the method raises error when some pixel exceeds the threshold."""
-    initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
-    with pytest.raises(ValueError):
-        hist.generate_alignment(initial_histogram, 0, 20)
-
-def test_alignment_exceeds_threshold_order2():
-    """Check that the method raises error when some pixel exceeds the threshold."""
-    initial_histogram = hist.empty_histogram(2)
-    filled_pixels = [4, 11, 14, 13, 5, 7, 8, 9, 11, 23, 4, 4, 17, 0, 1, 0]
-    initial_histogram[176:] = filled_pixels[:]
-    with pytest.raises(ValueError):
-        hist.generate_alignment(initial_histogram, 2, 20)
-
 def test_alignment_small_sky_order0():
-    """Create alignment from small sky's distribution at order 0"""
+    """Create alignment from small sky's distribution at order 2"""
     initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
     result = hist.generate_alignment(initial_histogram, 0, 250)
 
     expected = np.full(12, None)
     expected[11] = (0, 11, 131)
+
+    npt.assert_array_equal(result, expected)
+
+
+def test_alignment_small_sky_order1():
+    """Create alignment from small sky's distribution at order 1"""
+    initial_histogram = hist.empty_histogram(1)
+    filled_pixels = [42, 29, 42, 18]
+    initial_histogram[44:] = filled_pixels[:]
+    result = hist.generate_alignment(initial_histogram, 1, 250)
+
+    expected = np.full(48, None)
+    expected[44:] = [(0, 11, 131), (0, 11, 131), (0, 11, 131), (0, 11, 131)]
 
     npt.assert_array_equal(result, expected)
 
@@ -124,3 +117,20 @@ def test_alignment_even_sky():
     # everything maps to order 5, given the density
     for mapping in result:
         assert mapping[0] == 5
+
+
+def test_destination_pixel_map_order1():
+    """Create destination pixel map for small sky at order 1"""
+
+    alignment = np.full(48, None)
+    alignment[44:] = [(0, 11, 131), (0, 11, 131), (0, 11, 131), (0, 11, 131)]
+
+    initial_histogram = hist.empty_histogram(1)
+    filled_pixels = [51, 29, 51, 0]
+    initial_histogram[44:] = filled_pixels[:]
+
+    expected = {tuple([0, 11, 131]): [44, 45, 46]}
+
+    result = hist.generate_destination_pixel_map(initial_histogram, alignment)
+
+    npt.assert_array_equal(result, expected)

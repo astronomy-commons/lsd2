@@ -35,11 +35,26 @@ TEST_SMALL_SKY_PART4_CSV = os.path.join(
     TEST_SMALL_SKY_PARTS_DATA_DIR, "catalog_04_of_05.csv"
 )
 
+# ./parquet_shards - sharded parquet files representing small sky data
+TEST_PARQUET_SHARDS_DIR = os.path.join(TEST_DATA_DIR, "parquet_shards")
+TEST_PARQUET_SHARDS_DATA_DIR = os.path.join(TEST_PARQUET_SHARDS_DIR, "pixel_44")
+TEST_PARQUET_SHARDS_PART0 = os.path.join(
+    TEST_PARQUET_SHARDS_DATA_DIR, "shard_0.parquet"
+)
+TEST_PARQUET_SHARDS_PART1 = os.path.join(
+    TEST_PARQUET_SHARDS_DATA_DIR, "shard_1.parquet"
+)
+TEST_PARQUET_SHARDS_PART2 = os.path.join(
+    TEST_PARQUET_SHARDS_DATA_DIR, "shard_2.parquet"
+)
+TEST_PARQUET_SHARDS_PART3 = os.path.join(
+    TEST_PARQUET_SHARDS_DATA_DIR, "shard_3.parquet"
+)
+TEST_PARQUET_SHARDS_PART4 = os.path.join(
+    TEST_PARQUET_SHARDS_DATA_DIR, "shard_4.parquet"
+)
+
 
 # ./test_formats - special formats
 TEST_FORMATS_DIR = os.path.join(TEST_DATA_DIR, "test_formats")
 TEST_FORMATS_HEADERS_CSV = os.path.join(TEST_FORMATS_DIR, "headers.csv")
-
-# /.tmp - general use temp directory
-TEST_TMP_DIR = os.path.join(TEST_DATA_DIR, "tmp")
-os.makedirs(TEST_TMP_DIR, exist_ok=True)
