@@ -1,5 +1,7 @@
 """Tests of command line argument validation"""
 
+import tempfile
+
 import data_paths as dc
 import pytest
 
@@ -32,35 +34,37 @@ def test_invalid_path():
 
 def test_good_paths():
     """Required arguments are provided, and paths are found."""
-    good_args = [
-        "--catalog_name",
-        "catalog",
-        "--input_path",
-        dc.TEST_BLANK_DATA_DIR,
-        "--output_path",
-        dc.TEST_TMP_DIR,
-        "--input_format",
-        "csv",
-    ]
-    args = PartitionArguments()
-    args.from_command_line(good_args)
-    assert args.input_path == dc.TEST_BLANK_DATA_DIR
-    assert args.output_path == dc.TEST_TMP_DIR
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        good_args = [
+            "--catalog_name",
+            "catalog",
+            "--input_path",
+            dc.TEST_BLANK_DATA_DIR,
+            "--output_path",
+            tmp_dir,
+            "--input_format",
+            "csv",
+        ]
+        args = PartitionArguments()
+        args.from_command_line(good_args)
+        assert args.input_path == dc.TEST_BLANK_DATA_DIR
+        assert args.output_path == tmp_dir
 
 
 def test_good_paths_short_names():
     """Required arguments are provided, using short names for arguments."""
-    good_args = [
-        "-c",
-        "catalog",
-        "-i",
-        dc.TEST_BLANK_DATA_DIR,
-        "-o",
-        dc.TEST_TMP_DIR,
-        "-fmt",
-        "csv",
-    ]
-    args = PartitionArguments()
-    args.from_command_line(good_args)
-    assert args.input_path == dc.TEST_BLANK_DATA_DIR
-    assert args.output_path == dc.TEST_TMP_DIR
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        good_args = [
+            "-c",
+            "catalog",
+            "-i",
+            dc.TEST_BLANK_DATA_DIR,
+            "-o",
+            tmp_dir,
+            "-fmt",
+            "csv",
+        ]
+        args = PartitionArguments()
+        args.from_command_line(good_args)
+        assert args.input_path == dc.TEST_BLANK_DATA_DIR
+        assert args.output_path == tmp_dir

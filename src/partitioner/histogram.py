@@ -128,3 +128,31 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
                         nested_sums[read_order][index]} exceeds threshold {threshold}"""
                 )
     return nested_alignment[highest_order]
+
+
+def generate_destination_pixel_map(histogram, pixel_map):
+    """Generate mapping from destination pixel to all the constituent pixels.
+    Args:
+        histogram (:obj:`np.array`): one-dimensional numpy array of long integers where the
+            value at each index corresponds to the number of objects found at the healpix pixel.
+        pixel_map (:obj:`np.array`): one-dimensional numpy array of integer 3-tuples.
+            See `histogram.generate_alignment` for more details on this format.
+    Returns:
+        dictionary that maps the integer 3-tuple of a pixel at destination order to the set of
+        indexes in histogram for the pixels at the original healpix order
+    """
+
+    non_none_elements = [i for i in pixel_map if i is not None]
+    unique_pixels = np.unique(non_none_elements, axis=0)
+
+    result = {}
+    for pixel in unique_pixels:
+        source_pixels = []
+        for i, source in enumerate(pixel_map):
+            if not source:
+                continue
+            if source[0] == pixel[0] and source[1] == pixel[1] and histogram[i] > 0:
+                source_pixels.append(i)
+        result[tuple(pixel)] = source_pixels
+
+    return result
