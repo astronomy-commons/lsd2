@@ -53,7 +53,6 @@ def assert_parquet_file_ids(file_name, id_column, expected_ids):
     data_frame = pd.read_parquet(file_name, engine="pyarrow")
     assert id_column in data_frame.columns
     ids = data_frame[id_column].tolist()
-    print(ids)
 
     assert len(ids) == len(
         expected_ids

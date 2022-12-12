@@ -2,10 +2,13 @@
 
 import json
 import os
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
+import pkg_resources
 import pyarrow as pa
+import pyarrow.parquet as pq
 from astropy.table import Table
 
 
@@ -80,15 +83,13 @@ def write_catalog_info(args, histogram):
     """Write a catalog_info.json file with catalog metadata"""
     metadata = {}
     metadata["cat_name"] = args.catalog_name
-    # TODO - versioning
-    metadata["version"] = "0001"
-    # TODO - date formatting
-    metadata["generation_date"] = "0001"
+    metadata["version"] = pkg_resources.get_distribution("lsd2").version
+    now = datetime.now()
+    metadata["generation_date"] = now.strftime("%Y.%m.%d")
     metadata["ra_kw"] = args.ra_column
     metadata["dec_kw"] = args.dec_column
     metadata["id_kw"] = args.id_column
     metadata["total_objects"] = histogram.sum()
-    # metadata["orders"] = [0, 1]  # TODO
 
     metadata["pixel_threshold"] = args.pixel_threshold
 
@@ -149,11 +150,11 @@ def concatenate_parquet_files(input_directories, output_file_name="", sorting=""
 
     tables = []
     for path in input_directories:
-        tables.append(pa.parquet.read_table(path))
+        tables.append(pq.read_table(path))
     merged_table = pa.concat_tables(tables)
     if sorting:
         merged_table = merged_table.sort_by(sorting)
 
-    pa.parquet.write_table(merged_table, where=output_file_name)
+    pq.write_table(merged_table, where=output_file_name)
 
     return len(merged_table)

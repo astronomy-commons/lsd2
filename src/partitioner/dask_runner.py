@@ -37,7 +37,10 @@ def _generate_histogram(args, client):
                     cache_path=args.tmp_dir,
                 )
             )
-    progress(futures)
+    if args.progress_bar:
+        progress(futures)
+    else:
+        len(futures)
 
     raw_histogram = hist.empty_histogram(args.highest_healpix_order)
     for future in futures:
@@ -62,7 +65,10 @@ def reduce_pixels(args, destination_pixel_map, client):
                 id_column=args.id_column,
             )
         )
-    progress(futures)
+    if args.progress_bar:
+        progress(futures)
+    else:
+        len(futures)
 
 
 def run(args):
@@ -71,8 +77,8 @@ def run(args):
         raise ValueError("args is required and should be type PartitionArguments")
     with Client(
         local_directory=args.dask_tmp,
-        n_workers=1,
-        threads_per_worker=1,
+        n_workers=args.dask_n_workers,
+        threads_per_worker=args.dask_threads_per_worker,
     ) as client:
         raw_histogram = _generate_histogram(args, client)
         pixel_map = hist.generate_alignment(

@@ -86,8 +86,8 @@ def test_write_catalog_info():
     expected_lines = [
         "{",
         '    "cat_name": "small_sky",',
-        r'    "version": "\d+",',  # version matches digits
-        r'    "generation_date": "\d+",',  # date matches date format
+        r'    "version": "[.\d]+",',  # version matches digits
+        r'    "generation_date": "[.\d]+",',  # date matches date format
         '    "ra_kw": "ra",',
         '    "dec_kw": "dec",',
         '    "id_kw": "id",',

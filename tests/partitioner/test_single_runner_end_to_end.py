@@ -23,6 +23,7 @@ def test_small_sky():
             highest_healpix_order=1,
             ra_column="ra",
             dec_column="dec",
+            progress_bar=False,
         )
 
         sr.run(args)

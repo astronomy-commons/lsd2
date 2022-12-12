@@ -59,7 +59,7 @@ def test_single_debug_file():
         args = PartitionArguments()
         args.from_params(
             catalog_name="catalog",
-            debug_input_files=dc.TEST_FORMATS_HEADERS_CSV,
+            input_file_list=[dc.TEST_FORMATS_HEADERS_CSV],
             input_format="csv",
             output_path=tmp_dir,
         )

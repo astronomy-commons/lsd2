@@ -9,7 +9,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
 ]
-dynamic = ["version"]
+version = "0.0.1"
 
 [metadata]
 description = "Spatial functionality for extremely large astronomical databases"
