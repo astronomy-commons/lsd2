@@ -1,4 +1,4 @@
-"""Partitioner runner that doesn't use any parallelization mechanism"""
+"""Partitioner runner that uses dask for parallelization"""
 
 import numpy as np
 from dask.distributed import Client, progress
