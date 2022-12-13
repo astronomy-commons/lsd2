@@ -65,3 +65,97 @@ def test_single_debug_file():
         )
         assert len(args.input_paths) == 1
         assert args.input_paths[0] == dc.TEST_FORMATS_HEADERS_CSV
+
+
+def test_good_paths_empty_args():
+    """Paths are good. Remove some required arguments"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        args = PartitionArguments()
+        args.from_params(
+            catalog_name="catalog",
+            input_path=dc.TEST_BLANK_DATA_DIR,
+            input_format="csv",
+            output_path=tmp_dir,
+        )
+        with pytest.raises(ValueError):
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                input_format="",  ## empty
+                output_path=tmp_dir,
+            )
+        with pytest.raises(ValueError):
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                input_format="csv",
+                output_path="",  ## empty
+            )
+
+
+def test_runtime_args():
+    """Test errors for unknown runtimes"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError):
+            args = PartitionArguments()
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                input_format="csv",
+                output_path=tmp_dir,
+                runtime="unknown",
+            )
+
+
+def test_single_runtime_args():
+    """Test errors for single runtime arguments"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError):
+            args = PartitionArguments()
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                input_format="csv",
+                output_path=tmp_dir,
+                runtime="single",
+                dask_n_workers=10,  ## non-default
+            )
+
+
+def test_dask_runtime_args():
+    """Test errors for dask runtime arguments"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError):
+            args = PartitionArguments()
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                input_format="csv",
+                output_path=tmp_dir,
+                runtime="dask",
+                dask_n_workers=-10,
+                dask_threads_per_worker=-10,
+            )
+
+
+def test_healpix_args():
+    """Test errors for healpix partitioning arguments"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError):
+            args = PartitionArguments()
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                input_format="csv",
+                output_path=tmp_dir,
+                highest_healpix_order=30,
+            )
+        with pytest.raises(ValueError):
+            args = PartitionArguments()
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                input_format="csv",
+                output_path=tmp_dir,
+                pixel_threshold=3,
+            )

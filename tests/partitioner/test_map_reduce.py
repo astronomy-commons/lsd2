@@ -6,6 +6,7 @@ import tempfile
 import data_paths as dc
 import file_testing as ft
 import numpy.testing as npt
+import pytest
 
 import partitioner.histogram as hist
 import partitioner.map_reduce as mr
@@ -81,6 +82,21 @@ def test_map_small_sky_part_order1():
         ft.assert_parquet_file_ids(file_name, "id", expected_ids)
 
 
+def test_map_column_names_error():
+    """Test loading file with non-default column names"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError):
+            mr.map_to_pixels(
+                input_file=dc.TEST_FORMATS_HEADERS_CSV,
+                highest_order=0,
+                file_format="csv",
+                ra_column="ra",
+                dec_column="dec",
+                shard_index=0,
+                cache_path=tmp_dir,
+            )
+
+
 def test_reduce_order0():
     """Test reducing into one large pixel"""
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -98,3 +114,19 @@ def test_reduce_order0():
 
         expected_ids = [*range(700, 831)]
         ft.assert_parquet_file_ids(output_file, "id", expected_ids)
+
+
+def test_reduce_size_error():
+    """Test reducing - result sizes don't match"""
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with pytest.raises(ValueError):
+            mr.reduce_shards(
+                cache_path=dc.TEST_PARQUET_SHARDS_DIR,
+                origin_pixel_numbers=[44, 45, 46, 47],
+                destination_pixel_order=0,
+                destination_pixel_number=11,
+                destination_pixel_size=130,  # actual 131
+                output_path=tmp_dir,
+                id_column="id",
+            )

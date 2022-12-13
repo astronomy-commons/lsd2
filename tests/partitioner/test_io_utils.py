@@ -45,6 +45,12 @@ def test_read_single_csv():
     assert len(result) == 131
 
 
+def test_read_single_fits():
+    """Success case - fits file that exists being read as fits"""
+    result = io.read_dataframe(dc.TEST_FORMATS_FITS, "fits")
+    assert len(result) == 131
+
+
 def test_read_wrong_fileformat():
     """CSV file attempting to be read as parquet"""
     with pytest.raises(pa.lib.ArrowInvalid):

@@ -6,6 +6,7 @@ from dask.distributed import Client, progress
 import partitioner.histogram as hist
 import partitioner.io_utils as io_utils
 import partitioner.map_reduce as mr
+from partitioner.arguments import PartitionArguments
 
 
 def _generate_histogram(args, client):
@@ -75,6 +76,11 @@ def run(args):
     """Partitioner runner"""
     if not args:
         raise ValueError("args is required and should be type PartitionArguments")
+    if not isinstance(args, PartitionArguments):
+        raise ValueError("args must be type PartitionArguments")
+    if not args.runtime == "dask":
+        raise ValueError(f'runtime mismatch ({args.runtime} should be "dask"')
+
     with Client(
         local_directory=args.dask_tmp,
         n_workers=args.dask_n_workers,

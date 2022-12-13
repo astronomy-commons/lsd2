@@ -6,6 +6,7 @@ from tqdm import tqdm
 import partitioner.histogram as hist
 import partitioner.io_utils as io_utils
 import partitioner.map_reduce as mr
+from partitioner.arguments import PartitionArguments
 
 
 def _generate_histogram(args):
@@ -66,6 +67,11 @@ def run(args):
     """Partitioner runner"""
     if not args:
         raise ValueError("args is required and should be type PartitionArguments")
+    if not isinstance(args, PartitionArguments):
+        raise ValueError("args must be type PartitionArguments")
+    if not args.runtime == "single":
+        raise ValueError(f'runtime mismatch ({args.runtime} should be "single"')
+
     raw_histogram = _generate_histogram(args)
     pixel_map = hist.generate_alignment(
         raw_histogram, args.highest_healpix_order, args.pixel_threshold
