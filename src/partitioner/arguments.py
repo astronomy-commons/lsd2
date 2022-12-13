@@ -331,15 +331,13 @@ class PartitionArguments:
     def check_paths(self):
         """Check existence and permissions on provided path arguments"""
         # TODO: handle non-posix files/paths
-        if not self.input_path and not self.input_file_list:
-            raise ValueError("input_path or input_file_list is required")
-        if self.input_path and self.input_file_list:
-            raise ValueError("only one of input_path or debug_input_files is allowed")
-        if self.input_path and not os.path.exists(self.input_path):
-            raise ValueError("input_path not found on local storage")
+        if (not self.input_path and not self.input_file_list) or (
+            self.input_path and self.input_file_list
+        ):
+            raise ValueError("exactly one of input_path or input_file_list is required")
 
         if not os.path.exists(self.output_path):
-            raise ValueError(
+            raise FileNotFoundError(
                 f"output_path ({self.output_path}) not found on local storage"
             )
 
@@ -356,6 +354,8 @@ class PartitionArguments:
 
         # Basic checks complete - make more checks and create directories where necessary
         if self.input_path:
+            if not os.path.exists(self.input_path):
+                raise FileNotFoundError("input_path not found on local storage")
             self.input_paths = glob.glob(f"{self.input_path}/*{self.input_format}")
             if len(self.input_paths) == 0:
                 raise FileNotFoundError(

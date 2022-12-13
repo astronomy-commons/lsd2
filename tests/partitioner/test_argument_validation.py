@@ -16,11 +16,99 @@ def test_none():
         args.from_params()
 
 
-def test_invalid_path():
+def test_empty_required():
+    """*Most* required arguments are provided."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+
+        ## Input path is missing
+        with pytest.raises(ValueError):
+            args = PartitionArguments()
+            args.from_params(
+                catalog_name="catalog",
+                input_path="",
+                input_format="csv",
+                output_path=tmp_dir,
+            )
+
+        ## Output path is missing
+        with pytest.raises(ValueError):
+            args = PartitionArguments()
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                input_format="csv",
+                output_path="",
+            )
+
+
+def test_invalid_paths():
     """Required arguments are provided, but paths aren't found."""
     args = PartitionArguments()
-    with pytest.raises(ValueError):
-        args.from_params(catalog_name="catalog", input_path="path", output_path="path")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        ## Prove that it works with required args
+        args.from_params(
+            catalog_name="catalog",
+            input_path=dc.TEST_BLANK_DATA_DIR,
+            output_path=tmp_dir,
+            input_format="csv",
+        )
+
+        ## Bad output path
+        with pytest.raises(FileNotFoundError):
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                output_path="path",
+                input_format="csv",
+            )
+
+        ## Bad input path
+        with pytest.raises(FileNotFoundError):
+            args.from_params(
+                catalog_name="catalog",
+                input_path="path",
+                output_path=tmp_dir,
+                input_format="csv",
+            )
+
+        ## Input path has no files
+        with pytest.raises(FileNotFoundError):
+            args.from_params(
+                catalog_name="catalog",
+                input_path=dc.TEST_EMPTY_DATA_DIR,
+                output_path=tmp_dir,
+                input_format="csv",
+            )
+
+        ## Bad input file
+        with pytest.raises(FileNotFoundError):
+            args.from_params(
+                catalog_name="catalog",
+                input_file_list=["path"],
+                output_path=tmp_dir,
+                input_format="csv",
+            )
+
+
+def test_output_overwrite():
+    """Test that we can write to existing directory, but not one with contents"""
+    args = PartitionArguments()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        ## Prove that it works with required args
+        args.from_params(
+            catalog_name="blank",
+            input_path=dc.TEST_BLANK_DATA_DIR,
+            output_path=tmp_dir,
+            input_format="csv",
+        )
+
+        with pytest.raises(ValueError):
+            args.from_params(
+                catalog_name="blank",
+                input_path=dc.TEST_BLANK_DATA_DIR,
+                output_path=dc.TEST_DATA_DIR,
+                input_format="csv",
+            )
 
 
 def test_good_paths():
