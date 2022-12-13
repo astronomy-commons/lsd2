@@ -110,31 +110,8 @@ def test_small_sky_stats():
 
         sr.run(args)
 
-        # Check that the legacy metadata file exists, and contains correct object data
-        expected_lines = [
-            "{",
-            '    "cat_name": "small_sky",',
-            '    "ra_kw": "ra",',
-            '    "dec_kw": "dec",',
-            '    "id_kw": "id",',
-            '    "n_sources": 131,',
-            '    "pix_threshold": 1000000,',
-            r'    "urls": \[',
-            r'        ".*/small_sky_parts/catalog.*.csv"',
-            r'        ".*/small_sky_parts/catalog.*.csv"',
-            r'        ".*/small_sky_parts/catalog.*.csv"',
-            r'        ".*/small_sky_parts/catalog.*.csv"',
-            r'        ".*/small_sky_parts/catalog.*.csv"',
-            "    ],",
-            '    "hips": {',
-            r'        "0": \[',
-            "            11",
-            "        ]",
-            "    }",
-            "}",
-        ]
         metadata_filename = os.path.join(args.catalog_path, "small_sky_meta.json")
-        ft.assert_text_file_matches(expected_lines, metadata_filename)
+        assert os.path.exists(metadata_filename)
 
         # Check that the catalog parquet file DOES NOT exist
         output_file = os.path.join(

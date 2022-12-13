@@ -20,7 +20,7 @@ def assert_text_file_matches(expected_lines, file_name):
         expected_lines(:obj:`string array`) list of strings, formatted as regular expressions.
         file_name (str): fully-specified path of the file to read
     """
-    assert os.path.exists(file_name)
+    assert os.path.exists(file_name), f"file not found [{file_name}]"
     metadata_file = open(
         file_name,
         "r",
