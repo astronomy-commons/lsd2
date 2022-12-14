@@ -220,9 +220,9 @@ class PartitionArguments:
             catalog_name=args.catalog_name,
             input_path=args.input_path,
             input_format=args.input_format,
-            input_file_list=args.input_file_list.split(",")
-            if args.input_file_list
-            else None,
+            input_file_list=(
+                args.input_file_list.split(",") if args.input_file_list else None
+            ),
             ra_column=args.ra_column,
             dec_column=args.dec_column,
             ra_error_column=args.ra_error_column,
@@ -306,7 +306,7 @@ class PartitionArguments:
         if not 100 <= self.pixel_threshold <= 1_000_000:
             raise ValueError("pixel_threshold should be between 0 and 1,000,000")
 
-        if self.runtime=="single":
+        if self.runtime == "single":
             if (
                 self.dask_tmp
                 or self.dask_n_workers > 1
@@ -320,10 +320,8 @@ class PartitionArguments:
             if self.dask_n_workers <= 0:
                 raise ValueError("dask_n_workers should be greather than 0")
             if self.dask_threads_per_worker <= 0:
-                raise ValueError(
-                    "dask_threads_per_worker should be greather than 0"
-                )
-        else :
+                raise ValueError("dask_threads_per_worker should be greather than 0")
+        else:
             raise ValueError(f"unknown runtime {self.runtime}")
 
     def check_paths(self):
