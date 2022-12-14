@@ -12,7 +12,7 @@ class PartitionArguments:
         self.catalog_name = ""
         self.input_path = ""
         self.input_format = ""
-        self.debug_input_files = []
+        self.input_file_list = []
         self.input_paths = []
 
         self.ra_column = ""
@@ -29,7 +29,10 @@ class PartitionArguments:
         self.debug_stats_only = False
 
         self.runtime = "single"
+        self.progress_bar = True
         self.dask_tmp = ""
+        self.dask_n_workers = 1
+        self.dask_threads_per_worker = 1
 
         self.tmp_dir = ""
         # Any contexts that should be cleaned up on object deletion.
@@ -67,10 +70,9 @@ class PartitionArguments:
             type=str,
         )
         group.add_argument(
-            "-di",
-            "--debug_input_files",
-            help="explicit list of input files comma-separated",
-            default=None,
+            "--input_file_list",
+            help="explicit list of input files, comma-separated",
+            default="",
             type=str,
         )
 
@@ -176,6 +178,17 @@ class PartitionArguments:
         )
 
         group.add_argument(
+            "--progress_bar",
+            help="should a progress bar be displayed?",
+            action="store_true",
+        )
+        group.add_argument(
+            "--no_progress_bar",
+            help="should a progress bar be displayed?",
+            dest="progress_bar",
+            action="store_false",
+        )
+        group.add_argument(
             "--tmp_dir",
             help="directory for storing temporary parquet files",
             default=None,
@@ -188,6 +201,18 @@ class PartitionArguments:
             default=None,
             type=str,
         )
+        group.add_argument(
+            "--dask_n_workers",
+            help="the number of dask workers available",
+            default=1,
+            type=int,
+        )
+        group.add_argument(
+            "--dask_threads_per_worker",
+            help="the number of threads per dask worker",
+            default=1,
+            type=int,
+        )
 
         args = parser.parse_args(cl_args)
 
@@ -195,7 +220,9 @@ class PartitionArguments:
             catalog_name=args.catalog_name,
             input_path=args.input_path,
             input_format=args.input_format,
-            debug_input_files=args.debug_input_files,
+            input_file_list=args.input_file_list.split(",")
+            if args.input_file_list
+            else None,
             ra_column=args.ra_column,
             dec_column=args.dec_column,
             ra_error_column=args.ra_error_column,
@@ -208,7 +235,10 @@ class PartitionArguments:
             debug_stats_only=args.debug_stats_only,
             runtime=args.runtime,
             tmp_dir=args.tmp_dir,
+            progress_bar=args.progress_bar,
             dask_tmp=args.dask_tmp,
+            dask_n_workers=args.dask_n_workers,
+            dask_threads_per_worker=args.dask_threads_per_worker,
         )
 
     def from_params(
@@ -216,7 +246,7 @@ class PartitionArguments:
         catalog_name="",
         input_path="",
         input_format="parquet",
-        debug_input_files="",
+        input_file_list=None,
         ra_column="ra",
         dec_column="dec",
         ra_error_column="ra_error",
@@ -229,13 +259,16 @@ class PartitionArguments:
         debug_stats_only=False,
         runtime="single",
         tmp_dir="",
+        progress_bar=True,
         dask_tmp="",
+        dask_n_workers=1,
+        dask_threads_per_worker=1,
     ):
         """Use arguments provided in parameters."""
         self.catalog_name = catalog_name
         self.input_path = input_path
         self.input_format = input_format
-        self.debug_input_files = debug_input_files
+        self.input_file_list = input_file_list
 
         self.ra_column = ra_column
         self.dec_column = dec_column
@@ -251,7 +284,10 @@ class PartitionArguments:
 
         self.runtime = runtime
         self.tmp_dir = tmp_dir
+        self.progress_bar = progress_bar
         self.dask_tmp = dask_tmp
+        self.dask_n_workers = dask_n_workers
+        self.dask_threads_per_worker = dask_threads_per_worker
 
         self.check_arguments()
         self.check_paths()
@@ -262,34 +298,71 @@ class PartitionArguments:
             raise ValueError("catalog_name is required")
         if not self.input_format:
             raise ValueError("input_format is required")
+        if not self.output_path:
+            raise ValueError("output_path is required")
+
+        if not 0 <= self.highest_healpix_order <= 10:
+            raise ValueError("highest_healpix_order should be between 0 and 10")
+        if not 100 <= self.pixel_threshold <= 1_000_000:
+            raise ValueError("pixel_threshold should be between 0 and 1,000,000")
+
+        match self.runtime:
+            case "single":
+                if (
+                    self.dask_tmp
+                    or self.dask_n_workers > 1
+                    or self.dask_threads_per_worker > 1
+                ):
+                    raise ValueError(
+                        "dask_tmp, dask_n_workers, and dask_threads_per_worker"
+                        "should only be specified for `dask` runtime"
+                    )
+
+            case "dask":
+                if self.dask_n_workers <= 0:
+                    raise ValueError("dask_n_workers should be greather than 0")
+                if self.dask_threads_per_worker <= 0:
+                    raise ValueError(
+                        "dask_threads_per_worker should be greather than 0"
+                    )
+            case _:
+                raise ValueError(f"unknown runtime {self.runtime}")
 
     def check_paths(self):
         """Check existence and permissions on provided path arguments"""
         # TODO: handle non-posix files/paths
-        if not self.input_path and not self.debug_input_files:
-            raise ValueError("input_path or debug_input_files is required")
-        if self.input_path and self.debug_input_files:
-            raise ValueError("only one of input_path or debug_input_files is allowed")
-        if self.input_path and not os.path.exists(self.input_path):
-            raise ValueError("input_path not found on local storage")
+        if (not self.input_path and not self.input_file_list) or (
+            self.input_path and self.input_file_list
+        ):
+            raise ValueError("exactly one of input_path or input_file_list is required")
 
-        if not self.output_path:
-            raise ValueError("output_path is required")
         if not os.path.exists(self.output_path):
-            raise ValueError("output_path not found on local storage")
+            raise FileNotFoundError(
+                f"output_path ({self.output_path}) not found on local storage"
+            )
+
+        # Catalog path should not already exist, unless we're overwriting. Create it.
         self.catalog_path = os.path.join(self.output_path, self.catalog_name)
-        if not os.path.exists(self.catalog_path):
-            os.makedirs(self.catalog_path, exist_ok=True)
+        if not self.overwrite:
+            existing_catalog_files = glob.glob(f"{self.catalog_path}/*")
+            if existing_catalog_files:
+                raise ValueError(
+                    f"output_path ({self.catalog_path}) contains files."
+                    " choose a different directory or use --overwrite flag"
+                )
+        os.makedirs(self.catalog_path, exist_ok=True)
 
         # Basic checks complete - make more checks and create directories where necessary
         if self.input_path:
+            if not os.path.exists(self.input_path):
+                raise FileNotFoundError("input_path not found on local storage")
             self.input_paths = glob.glob(f"{self.input_path}/*{self.input_format}")
             if len(self.input_paths) == 0:
                 raise FileNotFoundError(
                     f"No files matched file pattern: {self.input_path}*{self.input_format} "
                 )
-        elif self.debug_input_files:
-            self.input_paths = self.debug_input_files.split(",")
+        elif self.input_file_list:
+            self.input_paths = self.input_file_list
             for test_path in self.input_paths:
                 if not os.path.exists(test_path):
                     raise FileNotFoundError(f"{test_path} not found on local storage")

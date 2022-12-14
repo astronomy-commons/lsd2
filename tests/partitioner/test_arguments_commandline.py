@@ -28,7 +28,7 @@ def test_invalid_path():
     """Required arguments are provided, but paths aren't found."""
     bad_path_args = ["-c", "catalog", "-i", "path", "-o", "path"]
     args = PartitionArguments()
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         args.from_command_line(bad_path_args)
 
 
