@@ -306,27 +306,25 @@ class PartitionArguments:
         if not 100 <= self.pixel_threshold <= 1_000_000:
             raise ValueError("pixel_threshold should be between 0 and 1,000,000")
 
-        match self.runtime:
-            case "single":
-                if (
-                    self.dask_tmp
-                    or self.dask_n_workers > 1
-                    or self.dask_threads_per_worker > 1
-                ):
-                    raise ValueError(
-                        "dask_tmp, dask_n_workers, and dask_threads_per_worker"
-                        "should only be specified for `dask` runtime"
-                    )
-
-            case "dask":
-                if self.dask_n_workers <= 0:
-                    raise ValueError("dask_n_workers should be greather than 0")
-                if self.dask_threads_per_worker <= 0:
-                    raise ValueError(
-                        "dask_threads_per_worker should be greather than 0"
-                    )
-            case _:
-                raise ValueError(f"unknown runtime {self.runtime}")
+        if self.runtime=="single":
+            if (
+                self.dask_tmp
+                or self.dask_n_workers > 1
+                or self.dask_threads_per_worker > 1
+            ):
+                raise ValueError(
+                    "dask_tmp, dask_n_workers, and dask_threads_per_worker"
+                    "should only be specified for `dask` runtime"
+                )
+        elif self.runtime == "dask":
+            if self.dask_n_workers <= 0:
+                raise ValueError("dask_n_workers should be greather than 0")
+            if self.dask_threads_per_worker <= 0:
+                raise ValueError(
+                    "dask_threads_per_worker should be greather than 0"
+                )
+        else :
+            raise ValueError(f"unknown runtime {self.runtime}")
 
     def check_paths(self):
         """Check existence and permissions on provided path arguments"""
