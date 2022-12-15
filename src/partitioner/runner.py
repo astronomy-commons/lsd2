@@ -12,12 +12,11 @@ def run(args: PartitionArguments):
     if not isinstance(args, PartitionArguments):
         raise ValueError("args must be type PartitionArguments")
 
-    match args.runtime:
-        case "single":
-            single_runner.run(args)
-            return
-        case "dask":
-            dask_runner.run(args)
-            return
-        case _:
-            raise NotImplementedError(f"unknown runtime ({args.runtime})")
+    if args.runtime == "single":
+        single_runner.run(args)
+        return
+    elif args.runtime ==  "dask":
+        dask_runner.run(args)
+        return
+    else:
+        raise NotImplementedError(f"unknown runtime ({args.runtime})")
