@@ -93,7 +93,7 @@ def reduce_shards(
         output_path (str): directory/prefix where destination parquet files will be written
         id_column (str): the id column or other column used for sorting the output
     Raises:
-        ValueError: if the number of objects in the destination parquet file does not 
+        ValueError: if the number of objects in the destination parquet file does not
             match the provided `destination_pixel_size`.
     """
     destination_dir = os.path.join(

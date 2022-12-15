@@ -13,7 +13,12 @@ def _generate_histogram(args):
     """Generate a raw histogram of object counts in each healpix pixel"""
 
     raw_histogram = hist.empty_histogram(args.highest_healpix_order)
-    for i, file_path in enumerate(tqdm(args.input_paths, desc="Mapping ")):
+    iterator = (
+        tqdm(args.input_paths, desc="Mapping ")
+        if args.progress_bar
+        else args.input_paths
+    )
+    for i, file_path in enumerate(iterator):
         if args.debug_stats_only:
             partial_histogram = hist.generate_partial_histogram(
                 file_path=file_path,
@@ -41,9 +46,12 @@ def _generate_histogram(args):
 def _reduce_pixels(args, destination_pixel_map):
     """Loop over destination pixels and merge into parquet files"""
 
-    for destination_pixel, source_pixels in tqdm(
-        destination_pixel_map.items(), desc="Reducing"
-    ):
+    iterator = (
+        tqdm(destination_pixel_map.items(), desc="Reducing")
+        if args.progress_bar
+        else destination_pixel_map.items()
+    )
+    for destination_pixel, source_pixels in iterator:
         mr.reduce_shards(
             cache_path=args.tmp_dir,
             origin_pixel_numbers=source_pixels,
@@ -58,9 +66,12 @@ def _reduce_pixels(args, destination_pixel_map):
 def run(args):
     """Partitioner runner"""
     if not args:
-        raise ValueError("partitioning arguments are required")
+        raise ValueError("args is required and should be type PartitionArguments")
     if not isinstance(args, PartitionArguments):
         raise ValueError("args must be type PartitionArguments")
+    if not args.runtime == "single":
+        raise ValueError(f'runtime mismatch ({args.runtime} should be "single"')
+
     raw_histogram = _generate_histogram(args)
     pixel_map = hist.generate_alignment(
         raw_histogram, args.highest_healpix_order, args.pixel_threshold

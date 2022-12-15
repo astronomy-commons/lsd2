@@ -108,7 +108,7 @@ def generate_alignment(histogram, highest_order=10, threshold=1_000_000):
         parent_order = read_order - 1
         for index in range(0, len(nested_sums[read_order])):
             parent_alignment = None
-            if parent_order >=0:
+            if parent_order >= 0:
                 parent_pixel = index >> 2
                 parent_alignment = nested_alignment[parent_order][parent_pixel]
 

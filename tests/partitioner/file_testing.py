@@ -9,21 +9,18 @@ import pandas as pd
 
 def assert_text_file_matches(expected_lines, file_name):
     """Convenience method to read a text file and compare the contents, line for line.
-
     When file contents get even a little bit big, it can be difficult to see
     the difference between an actual file and the expected contents without
     increased testing verbosity. This helper compares files line-by-line,
     using the provided strings or regular expressions.
-
     Notes:
         Because we check strings as regular expressions, you may need to escape some
         contents of `expected_lines`.
-
     Args:
         expected_lines(:obj:`string array`) list of strings, formatted as regular expressions.
         file_name (str): fully-specified path of the file to read
     """
-    assert os.path.exists(file_name)
+    assert os.path.exists(file_name), f"file not found [{file_name}]"
     metadata_file = open(
         file_name,
         "r",
@@ -45,7 +42,8 @@ def assert_text_file_matches(expected_lines, file_name):
 
 def assert_parquet_file_ids(file_name, id_column, expected_ids):
     """
-    Convenience method to read a parquet file and compare the object IDs to a list of expected objects.
+    Convenience method to read a parquet file and compare the object IDs to
+    a list of expected objects.
 
     Args:
         file_name (str): fully-specified path of the file to read
@@ -57,7 +55,6 @@ def assert_parquet_file_ids(file_name, id_column, expected_ids):
     data_frame = pd.read_parquet(file_name, engine="pyarrow")
     assert id_column in data_frame.columns
     ids = data_frame[id_column].tolist()
-    print(ids)
 
     assert len(ids) == len(
         expected_ids
