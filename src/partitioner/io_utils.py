@@ -2,10 +2,13 @@
 
 import json
 import os
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
+import pkg_resources
 import pyarrow as pa
+import pyarrow.parquet as pq
 from astropy.table import Table
 
 
@@ -52,33 +55,12 @@ def read_dataframe(path="", file_format="parquet") -> pd.DataFrame:
 
 
 class NumpyEncoder(json.JSONEncoder):
-    """Special json encoder for numpy types"""
+    """Special json encoder for numpy integer types"""
 
     def default(self, o):
-        obj = o
-        if isinstance(
-            obj,
-            (
-                np.int_,
-                np.intc,
-                np.intp,
-                np.int8,
-                np.int16,
-                np.int32,
-                np.int64,
-                np.uint8,
-                np.uint16,
-                np.uint32,
-                np.uint64,
-                np.ulonglong,
-            ),
-        ):
-            return int(obj)
-        elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
-            return float(obj)
-        elif isinstance(obj, (np.ndarray,)):
-            return obj.tolist()
-        return json.JSONEncoder.default(self, obj)
+        int_object = o
+        if isinstance(int_object, (np.int64, np.ulonglong)):
+            return int(int_object)
 
 
 def write_json_file(metadata_dictionary, file_name):
@@ -105,10 +87,9 @@ def write_catalog_info(args, histogram):
     """
     metadata = {}
     metadata["cat_name"] = args.catalog_name
-    # TODO - versioning
-    metadata["version"] = "0001"
-    # TODO - date formatting
-    metadata["generation_date"] = "0001"
+    metadata["version"] = pkg_resources.get_distribution("lsd2").version
+    now = datetime.now()
+    metadata["generation_date"] = now.strftime("%Y.%m.%d")
     metadata["ra_kw"] = args.ra_column
     metadata["dec_kw"] = args.dec_column
     metadata["id_kw"] = args.id_column
@@ -185,11 +166,11 @@ def concatenate_parquet_files(input_directories, output_file_name="", sorting=""
 
     tables = []
     for path in input_directories:
-        tables.append(pa.parquet.read_table(path))
+        tables.append(pq.read_table(path))
     merged_table = pa.concat_tables(tables)
     if sorting:
         merged_table = merged_table.sort_by(sorting)
 
-    pa.parquet.write_table(merged_table, where=output_file_name)
+    pq.write_table(merged_table, where=output_file_name)
 
     return len(merged_table)
