@@ -93,22 +93,22 @@ def test_invalid_paths():
 def test_output_overwrite():
     """Test that we can write to existing directory, but not one with contents"""
     args = PartitionArguments()
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        ## Prove that it works with required args
+    with pytest.raises(ValueError):
         args.from_params(
             catalog_name="blank",
             input_path=dc.TEST_BLANK_DATA_DIR,
-            output_path=tmp_dir,
+            output_path=dc.TEST_DATA_DIR,
             input_format="csv",
         )
 
-        with pytest.raises(ValueError):
-            args.from_params(
-                catalog_name="blank",
-                input_path=dc.TEST_BLANK_DATA_DIR,
-                output_path=dc.TEST_DATA_DIR,
-                input_format="csv",
-            )
+    ## No error with overwrite flag
+    args.from_params(
+        catalog_name="blank",
+        input_path=dc.TEST_BLANK_DATA_DIR,
+        output_path=dc.TEST_DATA_DIR,
+        overwrite=True,
+        input_format="csv",
+    )
 
 
 def test_good_paths():

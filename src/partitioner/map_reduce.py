@@ -1,5 +1,6 @@
 """Utilities for generating and manipulating object count histograms"""
 
+import logging
 import os
 
 import healpy as hp
@@ -7,6 +8,36 @@ import numpy as np
 
 from partitioner.histogram import empty_histogram
 from partitioner.io_utils import concatenate_parquet_files, read_dataframe
+
+LOGGER = logging.getLogger(__name__)
+
+
+def index_is_range_like(data_index):
+    """Test if a data frame's index is 'range-like'
+
+    This means:
+      - integers
+      - monotonically increasing
+      - no duplicates
+      - span from [0, len(data))
+    """
+    if not data_index.is_integer():
+        LOGGER.warning("Data index is non-integer. Re-indexing.")
+        return False
+    if data_index.has_duplicates:
+        LOGGER.warning("Data index contains duplicates. Re-indexing.")
+        return False
+    if data_index.hasnans:
+        LOGGER.warning("Data index contains nans. Re-indexing.")
+        return False
+    if data_index.min() != 0:
+        LOGGER.warning("Data index doesn't start at 0. Re-indexing.")
+        return False
+    if data_index.max() != len(data_index) - 1:
+        LOGGER.warning("Data index larger than length of data. Re-indexing.")
+        return False
+
+    return True
 
 
 def map_to_pixels(
@@ -45,6 +76,11 @@ def map_to_pixels(
     """
     histo = empty_histogram(highest_order)
     data = read_dataframe(input_file, file_format)
+
+    if not index_is_range_like(data.index):
+        LOGGER.warning("Reindexing data can be expensive.")
+        data.reset_index(inplace=True)
+        LOGGER.info("Reindexing complete")
 
     # Verify that the file has columns with desired names.
     if not all([x in data.columns for x in [ra_column, dec_column]]):

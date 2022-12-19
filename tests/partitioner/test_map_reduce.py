@@ -6,10 +6,35 @@ import tempfile
 import data_paths as dc
 import file_testing as ft
 import numpy.testing as npt
+import pandas as pd
 import pytest
+from numpy import nan
 
 import partitioner.histogram as hist
 import partitioner.map_reduce as mr
+
+
+def test_index_is_range_like():
+    """Test data frame index structure verification"""
+    ## This is ok
+    assert mr.index_is_range_like(pd.Index([0, 1, 2]))
+    ## Also ok when it comes from a range
+    assert mr.index_is_range_like(pd.RangeIndex(start=0, stop=5, step=1))
+
+    ## Some non-integer
+    assert not mr.index_is_range_like(pd.Index([0, 1, "a"]))
+    ## Duplicates
+    assert not mr.index_is_range_like(pd.Index([0, 1, 1]))
+    ## Contains nans
+    assert not mr.index_is_range_like(pd.Index([0, nan, 2]))
+    ## Doesn't start at 0
+    assert not mr.index_is_range_like(pd.Index([1, 2, 3]))
+    ## Doesn't start at 0, but with a range
+    assert not mr.index_is_range_like(pd.RangeIndex(start=5, stop=10, step=1))
+    ## Ends too big
+    assert not mr.index_is_range_like(pd.Index([0, 1, 3]))
+    ## Ends too bit, but with a range
+    assert not mr.index_is_range_like(pd.RangeIndex(start=0, stop=3, step=2))
 
 
 def test_map_small_sky_order0():
@@ -95,6 +120,20 @@ def test_map_column_names_error():
                 shard_index=0,
                 cache_path=tmp_dir,
             )
+
+
+def test_map_duplicated_index():
+    """Test loading file with duplicated values in index"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mr.map_to_pixels(
+            input_file=dc.TEST_FORMATS_DUPLICATE_INDEX,
+            highest_order=0,
+            file_format="parquet",
+            ra_column="ra",
+            dec_column="dec",
+            shard_index=0,
+            cache_path=tmp_dir,
+        )
 
 
 def test_reduce_order0():

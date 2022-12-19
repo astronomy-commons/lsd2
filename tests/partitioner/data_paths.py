@@ -58,4 +58,7 @@ TEST_PARQUET_SHARDS_PART4 = os.path.join(
 # ./test_formats - special formats
 TEST_FORMATS_DIR = os.path.join(TEST_DATA_DIR, "test_formats")
 TEST_FORMATS_HEADERS_CSV = os.path.join(TEST_FORMATS_DIR, "headers.csv")
+TEST_FORMATS_DUPLICATE_INDEX = os.path.join(
+    TEST_FORMATS_DIR, "duplicated_index.parquet"
+)
 TEST_FORMATS_FITS = os.path.join(TEST_FORMATS_DIR, "small_sky.fits")
