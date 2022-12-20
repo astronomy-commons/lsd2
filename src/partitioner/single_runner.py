@@ -1,5 +1,8 @@
 """Partitioner runner that doesn't use any parallelization mechanism"""
 
+import logging
+import time
+
 import numpy as np
 from tqdm import tqdm
 
@@ -8,10 +11,12 @@ import partitioner.io_utils as io_utils
 import partitioner.map_reduce as mr
 from partitioner.arguments import PartitionArguments
 
+LOGGER = logging.getLogger(__name__)
+
 
 def _generate_histogram(args):
     """Generate a raw histogram of object counts in each healpix pixel"""
-
+    start_time = time.perf_counter()
     raw_histogram = hist.empty_histogram(args.highest_healpix_order)
     iterator = (
         tqdm(args.input_paths, desc="Mapping ")
@@ -39,12 +44,14 @@ def _generate_histogram(args):
                 cache_path=args.tmp_dir,
             )
             raw_histogram = np.add(raw_histogram, partial_histogram)
-
+    end_time = time.perf_counter()
+    LOGGER.info("Completed histogram calculation in %i seconds", end_time - start_time)
     return raw_histogram
 
 
 def _reduce_pixels(args, destination_pixel_map):
     """Loop over destination pixels and merge into parquet files"""
+    start_time = time.perf_counter()
 
     iterator = (
         tqdm(destination_pixel_map.items(), desc="Reducing")
@@ -61,6 +68,8 @@ def _reduce_pixels(args, destination_pixel_map):
             output_path=args.catalog_path,
             id_column=args.id_column,
         )
+    end_time = time.perf_counter()
+    LOGGER.info("Completed pixel reduction in %i seconds", end_time - start_time)
 
 
 def run(args):

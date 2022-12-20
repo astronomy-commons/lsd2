@@ -1,5 +1,8 @@
 """Partitioner runner that uses dask for parallelization"""
 
+import logging
+import time
+
 import numpy as np
 from dask.distributed import Client, progress, wait
 
@@ -8,9 +11,13 @@ import partitioner.io_utils as io_utils
 import partitioner.map_reduce as mr
 from partitioner.arguments import PartitionArguments
 
+LOGGER = logging.getLogger(__name__)
+
 
 def _generate_histogram(args, client):
     """Generate a raw histogram of object counts in each healpix pixel"""
+
+    start_time = time.perf_counter()
 
     futures = []
     for i, file_path in enumerate(args.input_paths):
@@ -46,11 +53,16 @@ def _generate_histogram(args, client):
     raw_histogram = hist.empty_histogram(args.highest_healpix_order)
     for future in futures:
         raw_histogram = np.add(raw_histogram, future.result())
+
+    end_time = time.perf_counter()
+    LOGGER.info("Completed histogram calculation in %i seconds", end_time - start_time)
     return raw_histogram
 
 
 def _reduce_pixels(args, destination_pixel_map, client):
     """Loop over destination pixels and merge into parquet files"""
+
+    start_time = time.perf_counter()
 
     futures = []
     for destination_pixel, source_pixels in destination_pixel_map.items():
@@ -70,6 +82,9 @@ def _reduce_pixels(args, destination_pixel_map, client):
         progress(futures)
     else:
         wait(futures)
+
+    end_time = time.perf_counter()
+    LOGGER.info("Completed pixel reduction in %i seconds", end_time - start_time)
 
 
 def _validate_args(args):
