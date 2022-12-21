@@ -14,6 +14,8 @@ class Catalog:
         self.metadata_keywords = None
         self.partition_info = None
 
+        self.catalog_name = None
+
         self._initialize_metadata()
 
     def _initialize_metadata(self):
@@ -24,7 +26,7 @@ class Catalog:
             raise FileNotFoundError(
                 f"No catalog info found where expected: {metadata_filename}"
             )
-        partition_info_filename = os.path.join(self.catalog_path, "partition_info.json")
+        partition_info_filename = os.path.join(self.catalog_path, "partition_info.csv")
         if not os.path.exists(partition_info_filename):
             raise FileNotFoundError(
                 f"No partition info found where expected: {partition_info_filename}"
@@ -32,6 +34,7 @@ class Catalog:
 
         with open(metadata_filename, "r", encoding="utf-8") as metadata_info:
             self.metadata_keywords = json.load(metadata_info)
+        self.catalog_name = self.metadata_keywords["catalog_name"]
         self.partition_info = pd.read_csv(partition_info_filename)
         ## TODO - pre-fill all the partition file locations?
 
@@ -53,10 +56,21 @@ class Catalog:
         Returns:
             one-dimensional array of strings, where each string is a partition file
         """
-        ## TODO
-        return self.partition_info
+        ## TODO - there's probably a pythonic way to do this.
+        file_names = []
+        for index,  partition in self.partition_info.iterrows():
+            file_names.append(
+                os.path.join(
+                    self.catalog_path,
+                    f"Norder{int(partition['order'])}",
+                    f"Npix{int(partition['pixel'])}",
+                    "catalog.parquet",
+                )
+            )
+
+        return file_names
 
     def filter(self):
         """TODO"""
         ## TODO
-        return self
+        raise NotImplementedError('Not yet.')

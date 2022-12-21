@@ -9,6 +9,26 @@ import partitioner.map_reduce as mr
 from partitioner.arguments import PartitionArguments
 
 
+def _map_to_pixels(
+    input_file,
+    file_format,
+    highest_order,
+    ra_column,
+    dec_column,
+    shard_suffix,
+    cache_path,
+):
+    """Wrapper around map_reduce.map_to_pixels that loads the dataframe"""
+
+    return mr.map_to_pixels(
+        data=io_utils.read_dataframe(input_file, file_format),
+        highest_order=highest_order,
+        ra_column=ra_column,
+        dec_column=dec_column,
+        shard_suffix=shard_suffix,
+        cache_path=cache_path,
+    )
+
 def _generate_histogram(args, client):
     """Generate a raw histogram of object counts in each healpix pixel"""
 
@@ -28,13 +48,13 @@ def _generate_histogram(args, client):
         else:
             futures.append(
                 client.submit(
-                    mr.map_to_pixels,
+                    _map_to_pixels,
                     input_file=file_path,
                     file_format=args.input_format,
                     highest_order=args.highest_healpix_order,
                     ra_column=args.ra_column,
                     dec_column=args.dec_column,
-                    shard_index=i,
+                    shard_suffix=i,
                     cache_path=args.tmp_dir,
                 )
             )

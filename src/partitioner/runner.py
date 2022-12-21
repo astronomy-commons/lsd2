@@ -15,7 +15,7 @@ def run(args: PartitionArguments):
     if args.runtime == "single":
         single_runner.run(args)
         return
-    elif args.runtime ==  "dask":
+    elif args.runtime == "dask":
         dask_runner.run(args)
         return
     else:

@@ -77,6 +77,7 @@ def write_json_file(metadata_dictionary, file_name):
     ) as metadata_file:
         metadata_file.write(dumped_metadata + "\n")
 
+
 def write_catalog_info(args, histogram):
     """Write a catalog_info.json file with catalog metadata
 
@@ -86,7 +87,7 @@ def write_catalog_info(args, histogram):
             value at each index corresponds to the number of objects found at the healpix pixel.
     """
     metadata = {}
-    metadata["cat_name"] = args.catalog_name
+    metadata["catalog_name"] = args.catalog_name
     metadata["version"] = pkg_resources.get_distribution("lsd2").version
     now = datetime.now()
     metadata["generation_date"] = now.strftime("%Y.%m.%d")
@@ -115,6 +116,7 @@ def write_partition_info(args, pixel_map):
     data_frame.columns = ["order", "pixel", "num_objects"]
     data_frame = data_frame.astype(int)
     data_frame.to_csv(metadata_filename, index=False)
+
 
 def write_legacy_metadata(args, histogram, pixel_map):
     """Write a <catalog_name>_meta.json with the format expected by the prototype catalog implementation

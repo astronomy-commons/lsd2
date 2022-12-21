@@ -61,11 +61,13 @@ def test_alignment_wrong_size():
     with pytest.raises(ValueError):
         hist.generate_alignment(initial_histogram, 0, 250)
 
+
 def test_alignment_exceeds_threshold_order0():
     """Check that the method raises error when some pixel exceeds the threshold."""
     initial_histogram = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131])
     with pytest.raises(ValueError):
         hist.generate_alignment(initial_histogram, 0, 20)
+
 
 def test_alignment_exceeds_threshold_order2():
     """Check that the method raises error when some pixel exceeds the threshold."""
@@ -74,6 +76,7 @@ def test_alignment_exceeds_threshold_order2():
     initial_histogram[176:] = filled_pixels[:]
     with pytest.raises(ValueError):
         hist.generate_alignment(initial_histogram, 2, 20)
+
 
 def test_alignment_small_sky_order0():
     """Create alignment from small sky's distribution at order 0"""

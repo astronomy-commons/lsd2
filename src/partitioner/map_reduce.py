@@ -6,16 +6,15 @@ import healpy as hp
 import numpy as np
 
 from partitioner.histogram import empty_histogram
-from partitioner.io_utils import concatenate_parquet_files, read_dataframe
+from partitioner.io_utils import concatenate_parquet_files
 
 
 def map_to_pixels(
-    input_file,
-    file_format,
+    data,
     highest_order,
     ra_column,
     dec_column,
-    shard_index,
+    shard_suffix,
     cache_path,
 ):
     """Map a file if input objects to their healpix pixels.
@@ -24,13 +23,11 @@ def map_to_pixels(
     of counts for objects found in the indicated input_file
 
     Args:
-        input_file (str): fully-specified path to an input file
-        file_format (str): expected format for the input file. See io_utils.read_dataframe
-            for accepted formats.
+        data (`obj`:pd.DataFrame): the origin data to map
         highest_order (int):  the highest healpix order (e.g. 0-10)
         ra_column (str): where in the input to find the celestial coordinate, right ascension
         dec_column (str): where in the input to find the celestial coordinate, declination
-        shard_index (int): unique number for this shard of mapped data.
+        shard_suffix (int): unique string for this shard of mapped data.
             if mapping from multiple input files, this can be the index
             in the list of input files.
         cache_path (str): directory where temporary pixel parquet files
@@ -44,12 +41,11 @@ def map_to_pixels(
         FileNotFoundError: See io_utils.read_dataframe for other error conditions.
     """
     histo = empty_histogram(highest_order)
-    data = read_dataframe(input_file, file_format)
 
     # Verify that the file has columns with desired names.
     if not all([x in data.columns for x in [ra_column, dec_column]]):
         raise ValueError(
-            f"Invalid column names in input file: {ra_column}, {dec_column} not in {input_file}"
+            f"Invalid column names in input file: {ra_column}, {dec_column} not in data frame"
         )
     mapped_pixels = hp.ang2pix(
         2**highest_order,
@@ -67,7 +63,7 @@ def map_to_pixels(
 
         pixel_dir = os.path.join(cache_path, f"pixel_{pixel}")
         os.makedirs(pixel_dir, exist_ok=True)
-        output_file = os.path.join(pixel_dir, f"shard_{shard_index}.parquet")
+        output_file = os.path.join(pixel_dir, f"shard_{shard_suffix}.parquet")
         filtered_data.to_parquet(output_file)
     return histo
 
@@ -93,7 +89,7 @@ def reduce_shards(
         output_path (str): directory/prefix where destination parquet files will be written
         id_column (str): the id column or other column used for sorting the output
     Raises:
-        ValueError: if the number of objects in the destination parquet file does not 
+        ValueError: if the number of objects in the destination parquet file does not
             match the provided `destination_pixel_size`.
     """
     destination_dir = os.path.join(

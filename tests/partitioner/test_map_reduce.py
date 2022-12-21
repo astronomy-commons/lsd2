@@ -9,18 +9,18 @@ import numpy.testing as npt
 
 import partitioner.histogram as hist
 import partitioner.map_reduce as mr
+from partitioner.io_utils import read_dataframe
 
 
 def test_map_small_sky_order0():
     """Test loading the small sky catalog and partitioning each object into the same large bucket"""
     with tempfile.TemporaryDirectory() as tmp_dir:
         result = mr.map_to_pixels(
-            input_file=dc.TEST_SMALL_SKY_CSV,
+            data=read_dataframe(dc.TEST_SMALL_SKY_CSV, "csv"),  
             highest_order=0,
-            file_format="csv",
             ra_column="ra",
             dec_column="dec",
-            shard_index=0,
+            shard_suffix=0,
             cache_path=tmp_dir,
         )
 
@@ -43,12 +43,11 @@ def test_map_small_sky_part_order1():
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         result = mr.map_to_pixels(
-            input_file=dc.TEST_SMALL_SKY_PART0_CSV,
+            data=read_dataframe(dc.TEST_SMALL_SKY_PART0_CSV, "csv"),
             highest_order=1,
-            file_format="csv",
             ra_column="ra",
             dec_column="dec",
-            shard_index=0,
+            shard_suffix=0,
             cache_path=tmp_dir,
         )
 

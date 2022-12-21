@@ -68,8 +68,8 @@ def run(args):
         raise ValueError("args is required and should be type PartitionArguments")
     if not isinstance(args, PartitionArguments):
         raise ValueError("args must be type PartitionArguments")
-    if not args.runtime == "single":
-        raise ValueError(f'runtime mismatch ({args.runtime} should be "single"')
+    if not args.runtime == "axs":
+        raise ValueError(f'runtime mismatch ({args.runtime} should be "axs"')
 
     raw_histogram = _generate_histogram(args)
     pixel_map = hist.generate_alignment(
