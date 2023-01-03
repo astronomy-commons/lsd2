@@ -2,6 +2,7 @@
 
 import healpy as hp
 import numpy as np
+import pandas as pd
 
 from partitioner.io_utils import read_dataframe
 
@@ -138,21 +139,28 @@ def generate_destination_pixel_map(histogram, pixel_map):
         pixel_map (:obj:`np.array`): one-dimensional numpy array of integer 3-tuples.
             See `histogram.generate_alignment` for more details on this format.
     Returns:
-        dictionary that maps the integer 3-tuple of a pixel at destination order to the set of
-        indexes in histogram for the pixels at the original healpix order
+        data frame that has as columns:
+          - pixel order of destination
+          - pixel number of destination
+          - sum of rows in destination
+          - list of all source pixels at original order
     """
 
     non_none_elements = [i for i in pixel_map if i is not None]
     unique_pixels = np.unique(non_none_elements, axis=0)
+    data_frame = pd.DataFrame(unique_pixels)
+    data_frame.columns = ["order", "pixel", "num_objects"]
+    data_frame = data_frame.astype(int)
 
-    result = {}
-    for pixel in unique_pixels:
+    source_pixels_list = [0] * len(data_frame)
+    for index, pixel in data_frame.iterrows():
         source_pixels = []
         for i, source in enumerate(pixel_map):
             if not source:
                 continue
             if source[0] == pixel[0] and source[1] == pixel[1] and histogram[i] > 0:
                 source_pixels.append(i)
-        result[tuple(pixel)] = source_pixels
+        source_pixels_list[index] = source_pixels
 
-    return result
+    data_frame["origin_pixels"] = source_pixels_list
+    return data_frame

@@ -4,7 +4,9 @@ import data_paths as dc
 import healpy as hp
 import numpy as np
 import numpy.testing as npt
+import pandas as pd
 import pytest
+from pandas.testing import assert_frame_equal
 
 import partitioner.histogram as hist
 
@@ -152,8 +154,11 @@ def test_destination_pixel_map_order1():
     filled_pixels = [51, 29, 51, 0]
     initial_histogram[44:] = filled_pixels[:]
 
-    expected = {tuple([0, 11, 131]): [44, 45, 46]}
+    expected = pd.DataFrame(
+        data=[[0, 11, 131, [44, 45, 46]]],
+        columns=["order", "pixel", "num_objects", "origin_pixels"],
+    )
 
     result = hist.generate_destination_pixel_map(initial_histogram, alignment)
 
-    npt.assert_array_equal(result, expected)
+    assert_frame_equal(result, expected)

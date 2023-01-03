@@ -102,20 +102,19 @@ def write_catalog_info(args, histogram):
     write_json_file(metadata, metadata_filename)
 
 
-def write_partition_info(args, pixel_map):
+def write_partition_info(args, destination_pixel_map):
     """Write all partition data to CSV file.
     Args:
         args (:obj:`PartitionArguments`): collection of runtime arguments for the partitioning job
-        pixel_map (:obj:`np.array`): one-dimensional numpy array of integer 3-tuples.
-            See `histogram.generate_alignment` for more details on this format.
+        destination_pixel_map (:obj:`DataFrame`)
+          data frame that has as columns:
+          - pixel order of destination
+          - pixel number of destination
+          - sum of rows in destination
+          - list of all source pixels at original order
     """
     metadata_filename = os.path.join(args.catalog_path, "partition_info.csv")
-    temp = [i for i in pixel_map if i is not None]
-    partitions = np.unique(temp, axis=0)
-    data_frame = pd.DataFrame(partitions)
-    data_frame.columns = ["order", "pixel", "num_objects"]
-    data_frame = data_frame.astype(int)
-    data_frame.to_csv(metadata_filename, index=False)
+    destination_pixel_map.to_csv(metadata_filename, index=False)
 
 
 def write_legacy_metadata(args, histogram, pixel_map):

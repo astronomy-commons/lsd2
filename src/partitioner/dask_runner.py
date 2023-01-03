@@ -29,6 +29,7 @@ def _map_to_pixels(
         cache_path=cache_path,
     )
 
+
 def _generate_histogram(args, client):
     """Generate a raw histogram of object counts in each healpix pixel"""
 
@@ -73,15 +74,15 @@ def _reduce_pixels(args, destination_pixel_map, client):
     """Loop over destination pixels and merge into parquet files"""
 
     futures = []
-    for destination_pixel, source_pixels in destination_pixel_map.items():
+    for _, destination_pixel in destination_pixel_map.iterrows():
         futures.append(
             client.submit(
                 mr.reduce_shards,
                 cache_path=args.tmp_dir,
-                origin_pixel_numbers=source_pixels,
-                destination_pixel_order=destination_pixel[0],
-                destination_pixel_number=destination_pixel[1],
-                destination_pixel_size=destination_pixel[2],
+                origin_pixel_numbers=destination_pixel['origin_pixels'],
+                destination_pixel_order=destination_pixel['order'],
+                destination_pixel_number=destination_pixel['pixel'],
+                destination_pixel_size=destination_pixel['num_objects'],
                 output_path=args.catalog_path,
                 id_column=args.id_column,
             )
@@ -120,12 +121,12 @@ def run_with_client(args, client):
     pixel_map = hist.generate_alignment(
         raw_histogram, args.highest_healpix_order, args.pixel_threshold
     )
+    destination_pixel_map = hist.generate_destination_pixel_map(
+        raw_histogram, pixel_map
+    )
     io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)
     io_utils.write_catalog_info(args, raw_histogram)
-    io_utils.write_partition_info(args, pixel_map)
+    io_utils.write_partition_info(args, destination_pixel_map)
 
     if not args.debug_stats_only:
-        destination_pixel_map = hist.generate_destination_pixel_map(
-            raw_histogram, pixel_map
-        )
         _reduce_pixels(args, destination_pixel_map, client)
