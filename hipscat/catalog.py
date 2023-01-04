@@ -94,7 +94,10 @@ class Catalog():
 
         else: #assume local?
             if os.path.exists(file_source):
-                urls = glob.glob('{}*{}'.format(file_source, fmt))
+                fs_clean = file_source
+                if fs_clean[-1] != '/':
+                    fs_clean += '/'
+                urls = glob.glob('{}*{}'.format(fs_clean, fmt))
             else:
                 sys.exit('Local files not found at source {}'.format(file_source))
 

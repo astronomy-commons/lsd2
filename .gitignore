@@ -1,7 +1,12 @@
 ## Byte-compiled, execution cache
 __pycache__/
+dask-worker-space
+test_cluster_dump/
 tests/dask-worker-space
 examples/dask-worker-space
+tests/*/dask-worker-space
+tests/*/test_cluster_dump
+tests/**/tmp
 
 # Distribution / packaging
 .eggs/
