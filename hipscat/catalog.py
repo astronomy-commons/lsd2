@@ -213,16 +213,16 @@ class Catalog():
         #estanblish the return columns for the returned dataframe's metadata
         # dask.dataframe.map_partitions() requires the metadata of the resulting 
         # dataframe to be defined prior to execution. The column names and datatypes
-        # are defined here and passed in the 'meat' variable
+        # are defined here and passed in the 'meta' variable
         c1_cols = util.catalog_columns_selector_withdtype(cat1_md, c1_cols)
         c2_cols = util.catalog_columns_selector_withdtype(cat2_md, c2_cols)
 
         #populate metadata with column information 
         # plus variables from the cross_match calculation
-        meat = {}
-        meat.update(c1_cols)
-        meat.update(c2_cols)
-        meat.update({
+        meta = {}
+        meta.update(c1_cols)
+        meta.update(c2_cols)
+        meta.update({
             'hips_k':'i8', 
             'hips_pix':'i8',
             '_DIST':'f8'
@@ -235,7 +235,7 @@ class Catalog():
             c1_cols.keys(), c2_cols.keys(),
             n_neighbors=n_neighbors,
             dthresh=dthresh,
-            meta = meat
+            meta = meta
         )
         return self.result
     

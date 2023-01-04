@@ -53,13 +53,13 @@ def xmatch_distributed(client=None):
     c1_cols = ['RA', 'DEC', 'COADD_OBJECTS_ID',]
     c2_cols = ['ra', 'dec', 'pmra', 'pmdec', 'source_id']
 
-    result = c1.futures_cross_match(
+    result = c1.distributued_cross_match(
         c2, 
         c1_cols=c1_cols, 
         c2_cols=c2_cols, 
         n_neighbors=1, 
         client=client, 
-        debug=True
+        debug=False
     ).assign(
         filter1=lambda x: x.COADD_OBJECTS_ID % 5, 
        	filter2=lambda x:np.sqrt(x.pmra**2 + x.pmdec**2)
@@ -67,6 +67,7 @@ def xmatch_distributed(client=None):
         'filter1 > 3 and filter2 > 10.0'
     ).compute()
 
+    print()
     print(len(result))
 
 def xmatch_dataframe():
@@ -88,7 +89,7 @@ def xmatch_dataframe():
         c1_cols=c1_cols, 
         c2_cols=c2_cols, 
         n_neighbors=1, 
-        debug=True
+        debug=False
     ).assign(
         filter1=lambda x: x.COADD_OBJECTS_ID % 5, 
        	filter2=lambda x: np.sqrt(x.pmra**2 + x.pmdec**2)

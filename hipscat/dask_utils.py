@@ -259,7 +259,8 @@ def xmatch_from_daskdf(df, c1_md, c2_md, c1_cols, c2_cols,n_neighbors=1, dthresh
     # TODO: ensure that this just one entry in df, and remove the forloop
     for c1, c2, order, pix, tocull1, tocull2 in vals:
 
-        #TODO: enforcemetadata=False
+        # TODO: enforcemetadata=False
+        # TODO: select columns in the pd.read_parquet(...) command
         # try/except is here because when enforcemetadata=True, it passes in 
         #  a test-dataframe that has values for filepaths as 'foo'/'bar'
         #  which breaks opening the pandas.read_parquet()

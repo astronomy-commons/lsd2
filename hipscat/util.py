@@ -89,7 +89,15 @@ def map_pixel_at_order(pixel, order, _map):
 
 
 def map_catalog_hips(cat1_hips, cat1_outputdir, cat2_hips, cat2_outputdir, debug=False):
-    
+    '''
+        Function to establish the xmatch mapping between two hipscat.catalog objects
+
+        iterates over all orders in C1, then searches the second catalog hips.metadata
+         for the catalog to crossmatch against. Utilizes the map_pixel_at_order() function
+         to find the catalog(s) via bitshifting logic. 
+
+         returns a list[[c1_path, c2_path]] 
+    '''
     ret = []
 
     c1_orders = [int(x) for x in cat1_hips.keys()]
@@ -141,7 +149,14 @@ def gnomonic(lon, lat, clon, clat):
 
 
 def gc_dist(lon1, lat1, lon2, lat2):
+    '''
+        function that calculates the distance between two points
+            p1 (lon1, lat1)
+            p2 (lon2, lat2)
 
+            can be np.array()
+            returns np.array()
+    '''
     lon1 = np.radians(lon1); lat1 = np.radians(lat1)
     lon2 = np.radians(lon2); lat2 = np.radians(lat2)
 
@@ -149,7 +164,15 @@ def gc_dist(lon1, lat1, lon2, lat2):
 
 
 def which_cull_and_pixorder(c1, c2):
-    
+    '''
+        c1 and c2 are string pathways to two catalog.parquet files
+
+        the logic here is that if the size of one pixel is
+        greater than the other, then there is no need to retain 
+        sources in the larger pixel. I.E if an order is greater, then 
+        flag that catalog to be culled to the smaller order
+    '''
+
     c1_order = int(c1.split('Norder')[1].split('/')[0])
     c1_pix = int(c1.split('Npix')[1].split('/')[0])
     c2_order = int(c2.split('Norder')[1].split('/')[0])
@@ -169,6 +192,17 @@ def which_cull_and_pixorder(c1, c2):
 
 
 def xmatchmap_dict(hp_match_map):
+    '''
+        This instantiates the dask.dataframe dict from the hipscat xmatch map
+            i.e. which catalog.parquet files will be crossmatched, along with 
+            other data used in the xm
+        
+        returns a table with columns = [
+            catalog1_file_path, 
+            catalog2_file_path, 
+            other_xm_metadata...
+        ] 
+    '''
     c1, c2 = [], []
     o, p, = [], []
     tc1, tc2 = [], []
@@ -197,6 +231,17 @@ def xmatchmap_dict(hp_match_map):
 
 
 def catalog_columns_selector_withdtype(cat_md, cols):
+    '''
+        Establish the return columns for the dataframe's metadata
+         dask.dataframe.map_partitions() requires the metadata of the resulting 
+         dataframe to be defined prior to execution. The column names and datatypes
+         are defined here and passed in the 'meta' variable
+
+         it expects the ra_kw, dec_kw, and id_kw fields with their respective dtypes
+         if the user want's other columns, it will append them
+
+         TODO: validate user-defined cols fields {key: dtype} 
+    '''
     expected_cols = {
         cat_md['ra_kw'] :'f8',
         cat_md['dec_kw']:'f8',
@@ -220,8 +265,25 @@ def establish_pd_meta(c1_cols, c2_cols):
 
 
 def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
-    #df = dfc.copy()
-    #del dfc
+    '''
+        df=pandas.dataframe() from catalog
+        df_md=dict{}: metadata for the catalog, need the RA/DEC keywords
+        order=int
+        pix=int
+        cols=list
+        tocull = bool
+        
+        cull the catalog dataframes based on ToCull=True/False
+         and user defined columns
+
+        culls based on the smallest comparative order/pixel in the xmatch.
+        utlizes the hp.ang2pix() to find all sources at that order,
+        then only returns the dataframe containing the sources at the pixel
+          -  df['hips_pix'].isin([pix])
+    
+        TODO: select columns in the pd.read_parquet(...) command
+    '''
+
     if tocull:
         df['hips_pix'] = hp.ang2pix(2**order, 
             df[df_md['ra_kw']].values, 
@@ -249,6 +311,9 @@ def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
 def frame_gnomonic(df, df_md, clon, clat):
     '''
     method taken from lsd1
+        creates a list of gnomonic distances for each source in the dataframe
+        from the center of the ordered pixel. These values are passed into 
+        the kdtree NN query during the xmach routine.
     '''
     phi  = np.radians(df[df_md['dec_kw']].values)
     l    = np.radians(df[df_md['ra_kw']].values)
