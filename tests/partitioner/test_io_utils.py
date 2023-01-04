@@ -88,7 +88,7 @@ def test_write_json_file():
 
 
 def test_write_catalog_info():
-    """Test that we accurately write out partition metadata"""
+    """Test that we accurately write out catalog metadata"""
     expected_lines = [
         "{",
         '    "catalog_name": "small_sky",',
@@ -98,6 +98,7 @@ def test_write_catalog_info():
         '    "dec_kw": "dec",',
         '    "id_kw": "id",',
         '    "total_objects": 131,',
+        '    "origin_healpix_order": 0',
         '    "pixel_threshold": 1000000',
         "}",
     ]
@@ -123,7 +124,7 @@ def test_write_catalog_info():
 def test_write_partition_info():
     """Test that we accurately write out the individual partition stats"""
     expected_lines = [
-        'order,pixel,num_objects,origin_pixels',
+        "order,pixel,num_objects,origin_pixels",
         r'0,11,131,"\[44, 45, 46\]"',
     ]
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -137,7 +138,7 @@ def test_write_partition_info():
             ra_column="ra",
             dec_column="dec",
         )
-        pixel_map= pd.DataFrame(
+        pixel_map = pd.DataFrame(
             data=[[0, 11, 131, [44, 45, 46]]],
             columns=["order", "pixel", "num_objects", "origin_pixels"],
         )

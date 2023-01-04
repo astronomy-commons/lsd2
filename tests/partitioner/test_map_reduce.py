@@ -16,7 +16,7 @@ def test_map_small_sky_order0():
     """Test loading the small sky catalog and partitioning each object into the same large bucket"""
     with tempfile.TemporaryDirectory() as tmp_dir:
         result = mr.map_to_pixels(
-            data=read_dataframe(dc.TEST_SMALL_SKY_CSV, "csv"),  
+            data=read_dataframe(dc.TEST_SMALL_SKY_CSV, "csv"),
             highest_order=0,
             ra_column="ra",
             dec_column="dec",

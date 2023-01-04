@@ -53,10 +53,10 @@ def _reduce_pixels(args, destination_pixel_map):
     for _, destination_pixel in iterator:
         mr.reduce_shards(
             cache_path=args.tmp_dir,
-            origin_pixel_numbers=destination_pixel['origin_pixels'],
-            destination_pixel_order=destination_pixel['order'],
-            destination_pixel_number=destination_pixel['pixel'],
-            destination_pixel_size=destination_pixel['num_objects'],
+            origin_pixel_numbers=destination_pixel["origin_pixels"],
+            destination_pixel_order=destination_pixel["order"],
+            destination_pixel_number=destination_pixel["pixel"],
+            destination_pixel_size=destination_pixel["num_objects"],
             output_path=args.catalog_path,
             id_column=args.id_column,
         )

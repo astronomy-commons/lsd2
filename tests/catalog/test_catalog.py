@@ -10,7 +10,7 @@ TEST_DATA_DIR = os.path.join(TEST_DIR, "data")
 
 
 def test_load_catalog_small_sky():
-    """Instantiate a catalog"""
+    """Instantiate a catalog with 1 pixel"""
     cat = Catalog(os.path.join(TEST_DATA_DIR, "small_sky"))
 
     assert cat.catalog_name == "small_sky"
@@ -19,7 +19,7 @@ def test_load_catalog_small_sky():
 
 
 def test_load_catalog_small_sky_order1():
-    """Instantiate a catalog"""
+    """Instantiate a catalog with 4 pixels"""
     cat = Catalog(os.path.join(TEST_DATA_DIR, "small_sky_order1"))
 
     assert cat.catalog_name == "small_sky_order1"

@@ -12,7 +12,10 @@ class Catalog:
     def __init__(self, catalog_path=None):
         self.catalog_path = catalog_path
         self.metadata_keywords = None
+
+        self.original_partition_info = None
         self.partition_info = None
+        self.origin_pixel_map = None
 
         self.catalog_name = None
 
@@ -35,7 +38,8 @@ class Catalog:
         with open(metadata_filename, "r", encoding="utf-8") as metadata_info:
             self.metadata_keywords = json.load(metadata_info)
         self.catalog_name = self.metadata_keywords["catalog_name"]
-        self.partition_info = pd.read_csv(partition_info_filename)
+        self.original_partition_info = pd.read_csv(partition_info_filename)
+        self.partition_info = self.original_partition_info.copy()
         ## TODO - pre-fill all the partition file locations?
 
     def get_pixels(self):
@@ -58,7 +62,7 @@ class Catalog:
         """
         ## TODO - there's probably a pythonic way to do this.
         file_names = []
-        for index,  partition in self.partition_info.iterrows():
+        for _, partition in self.partition_info.iterrows():
             file_names.append(
                 os.path.join(
                     self.catalog_path,
@@ -73,4 +77,4 @@ class Catalog:
     def filter(self):
         """TODO"""
         ## TODO
-        raise NotImplementedError('Not yet.')
+        raise NotImplementedError("Not yet.")

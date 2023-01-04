@@ -96,6 +96,7 @@ def write_catalog_info(args, histogram):
     metadata["id_kw"] = args.id_column
     metadata["total_objects"] = histogram.sum()
 
+    metadata["origin_healpix_order"] = args.highest_healpix_order
     metadata["pixel_threshold"] = args.pixel_threshold
 
     metadata_filename = os.path.join(args.catalog_path, "catalog_info.json")
