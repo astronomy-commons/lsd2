@@ -6,6 +6,7 @@ import tempfile
 
 import data_paths as dc
 import file_testing as ft
+import pandas as pd
 import pytest
 
 import partitioner.single_runner as sr
@@ -119,3 +120,37 @@ def test_small_sky_stats():
         )
 
         assert not os.path.exists(output_file)
+
+def test_small_sky_filter():
+    """Test loading the small sky catalog and and filtering odd object IDs"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        args = PartitionArguments()
+        args.from_params(
+            catalog_name="small_sky",
+            input_path=dc.TEST_SMALL_SKY_PARTS_DATA_DIR,
+            input_format="csv",
+            output_path=tmp_dir,
+            highest_healpix_order=1,
+            ra_column="ra",
+            dec_column="dec",
+            progress_bar=False,
+            filter_function=filter_odd,
+        )
+
+        sr.run(args)
+
+        metadata_filename = os.path.join(args.catalog_path, "small_sky_meta.json")
+        assert os.path.exists(metadata_filename)
+
+        # Check that the catalog parquet file exists and contains only even object IDs
+        output_file = os.path.join(
+            args.catalog_path, "Norder0/Npix11", "catalog.parquet"
+        )
+
+        expected_ids = [*range(700, 831,2)]
+        ft.assert_parquet_file_ids(output_file, "id", expected_ids)
+
+
+def filter_odd(data: pd.DataFrame) -> pd.DataFrame:
+    """Remove rows where object id is odd integer"""
+    return data[data.id % 2 == 0]

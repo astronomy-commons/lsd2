@@ -21,16 +21,19 @@ def _generate_histogram(args):
     for i, file_path in enumerate(iterator):
         if args.debug_stats_only:
             partial_histogram = hist.generate_partial_histogram(
-                file_path=file_path,
+                data=args.filter_function(
+                    io_utils.read_dataframe(file_path, args.input_format)
+                ),
                 highest_order=args.highest_healpix_order,
-                file_format=args.input_format,
                 ra_column=args.ra_column,
                 dec_column=args.dec_column,
             )
             raw_histogram = np.add(raw_histogram, partial_histogram)
         else:
             partial_histogram = mr.map_to_pixels(
-                data=io_utils.read_dataframe(file_path, args.input_format),
+                data=args.filter_function(
+                    io_utils.read_dataframe(file_path, args.input_format)
+                ),
                 highest_order=args.highest_healpix_order,
                 ra_column=args.ra_column,
                 dec_column=args.dec_column,

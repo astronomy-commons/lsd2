@@ -4,6 +4,8 @@ import glob
 import os
 import tempfile
 
+import pandas as pd
+
 
 class PartitionArguments:
     """Container class for holding partitioning arguments"""
@@ -27,6 +29,8 @@ class PartitionArguments:
         self.highest_healpix_order = 10
         self.pixel_threshold = 1_000_000
         self.debug_stats_only = False
+
+        self.filter_function = None
 
         self.runtime = "single"
         self.progress_bar = True
@@ -257,6 +261,7 @@ class PartitionArguments:
         highest_healpix_order=10,
         pixel_threshold=1_000_000,
         debug_stats_only=False,
+        filter_function=None,
         runtime="single",
         tmp_dir="",
         progress_bar=True,
@@ -281,6 +286,10 @@ class PartitionArguments:
         self.highest_healpix_order = highest_healpix_order
         self.pixel_threshold = pixel_threshold
         self.debug_stats_only = debug_stats_only
+
+        self.filter_function = (
+            filter_function if filter_function else passthrough_filter_function
+        )
 
         self.runtime = runtime
         self.tmp_dir = tmp_dir
@@ -375,3 +384,8 @@ class PartitionArguments:
         tmp_dir = tempfile.TemporaryDirectory(prefix=tmp_prefix)
         self.tmp_dir = tmp_dir.name
         self.contexts.append(tmp_dir)
+
+
+def passthrough_filter_function(data: pd.DataFrame) -> pd.DataFrame:
+    """No-op filter function to be used when no user-defined filter is provided"""
+    return data

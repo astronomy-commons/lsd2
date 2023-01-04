@@ -119,7 +119,7 @@ def write_partition_info(args, destination_pixel_map):
 
 
 def write_legacy_metadata(args, histogram, pixel_map):
-    """Write a <catalog_name>_meta.json with the format expected by the prototype catalog implementation
+    """Write a <catalog_name>_meta.json with the format expected by the prototype catalog.
 
     Args:
         args (:obj:`PartitionArguments`): collection of runtime arguments for the partitioning job

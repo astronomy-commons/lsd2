@@ -39,9 +39,8 @@ def _generate_histogram(args, client):
             futures.append(
                 client.submit(
                     hist.generate_partial_histogram,
-                    file_path,
+                    data=io_utils.read_dataframe(file_path, args.input_format),
                     highest_order=args.highest_healpix_order,
-                    file_format=args.input_format,
                     ra_column=args.ra_column,
                     dec_column=args.dec_column,
                 )

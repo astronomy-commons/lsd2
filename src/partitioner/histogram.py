@@ -4,8 +4,6 @@ import healpy as hp
 import numpy as np
 import pandas as pd
 
-from partitioner.io_utils import read_dataframe
-
 
 def empty_histogram(highest_order):
     """Use numpy to create an histogram array with the right shape, filled with zeros.
@@ -19,8 +17,7 @@ def empty_histogram(highest_order):
 
 
 def generate_partial_histogram(
-    file_path,
-    file_format,
+    data: pd.DataFrame,
     highest_order,
     ra_column,
     dec_column,
@@ -28,9 +25,7 @@ def generate_partial_histogram(
     """Generate a histogram of counts for objects found in the indicated file_path
 
     Args:
-        file_path (str): full path to the input file
-        file_format (str): expected format for the input file. See io_utils.read_dataframe
-            for accepted formats.
+        data (`obj`:DataFrame): tabular object data
         highest_order (int):  the highest healpix order (e.g. 0-10)
         ra_column (str): where in the input to find the celestial coordinate, right ascension
         dec_column (str): where in the input to find the celestial coordinate, declination
@@ -39,17 +34,14 @@ def generate_partial_histogram(
         to the number of objects found at the healpix pixel.
     Raises:
         ValueError: if the `ra_column` or `dec_column` cannot be found in the input file.
-        FileNotFoundError: See io_utils.read_dataframe for other error conditions.
     """
     histo = empty_histogram(highest_order)
-    data = read_dataframe(file_path, file_format)
-
-    required_columns = [ra_column, dec_column]
 
     # Verify that the file has columns with desired names.
+    required_columns = [ra_column, dec_column]
     if not all(x in data.columns for x in required_columns):
         raise ValueError(
-            f"Invalid column names in input file: {ra_column}, {dec_column} not in {file_path}"
+            f"Invalid column names in input file: {ra_column}, {dec_column} not in data"
         )
     mapped_pixels = hp.ang2pix(
         2**highest_order,

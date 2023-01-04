@@ -38,12 +38,13 @@ def map_to_pixels(
         to the number of objects found at the healpix pixel.
     Raises:
         ValueError: if the `ra_column` or `dec_column` cannot be found in the input file.
-        FileNotFoundError: See io_utils.read_dataframe for other error conditions.
     """
     histo = empty_histogram(highest_order)
+    data.reset_index(inplace=True)
 
     # Verify that the file has columns with desired names.
-    if not all([x in data.columns for x in [ra_column, dec_column]]):
+    required_columns = [ra_column, dec_column]
+    if not all(x in data.columns for x in required_columns):
         raise ValueError(
             f"Invalid column names in input file: {ra_column}, {dec_column} not in data frame"
         )

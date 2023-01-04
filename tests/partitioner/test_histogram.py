@@ -9,14 +9,15 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 import partitioner.histogram as hist
+from partitioner.io_utils import read_dataframe
 
 
 def test_small_sky_same_pixel():
     """Test loading the small sky catalog and partitioning each object into the same large bucket"""
+
     result = hist.generate_partial_histogram(
-        file_path=dc.TEST_SMALL_SKY_CSV,
+        data=read_dataframe(dc.TEST_SMALL_SKY_CSV, "csv"),
         highest_order=0,
-        file_format="csv",
         ra_column="ra",
         dec_column="dec",
     )
@@ -32,9 +33,8 @@ def test_column_names_error():
     """Test loading file with non-default column names (without specifying column names)"""
     with pytest.raises(ValueError):
         hist.generate_partial_histogram(
-            file_path=dc.TEST_FORMATS_HEADERS_CSV,
+            data=read_dataframe(dc.TEST_FORMATS_HEADERS_CSV, "csv"),
             highest_order=0,
-            file_format="csv",
             ra_column="ra",
             dec_column="dec",
         )
@@ -43,9 +43,8 @@ def test_column_names_error():
 def test_column_names():
     """Test loading file with non-default column names"""
     result = hist.generate_partial_histogram(
-        file_path=dc.TEST_FORMATS_HEADERS_CSV,
+        data=read_dataframe(dc.TEST_FORMATS_HEADERS_CSV, "csv"),
         highest_order=0,
-        file_format="csv",
         ra_column="ra_mean",
         dec_column="dec_mean",
     )
