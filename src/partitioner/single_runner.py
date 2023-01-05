@@ -19,28 +19,17 @@ def _generate_histogram(args):
         else args.input_paths
     )
     for i, file_path in enumerate(iterator):
-        if args.debug_stats_only:
-            partial_histogram = hist.generate_partial_histogram(
-                data=args.filter_function(
-                    io_utils.read_dataframe(file_path, args.input_format)
-                ),
-                highest_order=args.highest_healpix_order,
-                ra_column=args.ra_column,
-                dec_column=args.dec_column,
-            )
-            raw_histogram = np.add(raw_histogram, partial_histogram)
-        else:
-            partial_histogram = mr.map_to_pixels(
-                data=args.filter_function(
-                    io_utils.read_dataframe(file_path, args.input_format)
-                ),
-                highest_order=args.highest_healpix_order,
-                ra_column=args.ra_column,
-                dec_column=args.dec_column,
-                shard_suffix=i,
-                cache_path=args.tmp_dir,
-            )
-            raw_histogram = np.add(raw_histogram, partial_histogram)
+        partial_histogram = mr.map_to_pixels(
+            input_file=file_path,
+            file_format=args.input_format,
+            filter_function=args.filter_function,
+            highest_order=args.highest_healpix_order,
+            ra_column=args.ra_column,
+            dec_column=args.dec_column,
+            shard_suffix=i,
+            cache_path=None if args.debug_stats_only else args.tmp_dir,
+        )
+        raw_histogram = np.add(raw_histogram, partial_histogram)
 
     return raw_histogram
 
@@ -81,9 +70,11 @@ def run(args):
     destination_pixel_map = hist.generate_destination_pixel_map(
         raw_histogram, pixel_map
     )
-    io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)
-    io_utils.write_catalog_info(args, raw_histogram)
-    io_utils.write_partition_info(args, destination_pixel_map)
 
     if not args.debug_stats_only:
         _reduce_pixels(args, destination_pixel_map)
+
+    # All done - write out the metadata
+    io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)
+    io_utils.write_catalog_info(args, raw_histogram)
+    io_utils.write_partition_info(args, destination_pixel_map)

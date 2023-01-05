@@ -9,55 +9,24 @@ import partitioner.map_reduce as mr
 from partitioner.arguments import PartitionArguments
 
 
-def _map_to_pixels(
-    input_file,
-    file_format,
-    highest_order,
-    ra_column,
-    dec_column,
-    shard_suffix,
-    cache_path,
-):
-    """Wrapper around map_reduce.map_to_pixels that loads the dataframe"""
-
-    return mr.map_to_pixels(
-        data=io_utils.read_dataframe(input_file, file_format),
-        highest_order=highest_order,
-        ra_column=ra_column,
-        dec_column=dec_column,
-        shard_suffix=shard_suffix,
-        cache_path=cache_path,
-    )
-
-
 def _generate_histogram(args, client):
     """Generate a raw histogram of object counts in each healpix pixel"""
 
     futures = []
     for i, file_path in enumerate(args.input_paths):
-        if args.debug_stats_only:
-            futures.append(
-                client.submit(
-                    hist.generate_partial_histogram,
-                    data=io_utils.read_dataframe(file_path, args.input_format),
-                    highest_order=args.highest_healpix_order,
-                    ra_column=args.ra_column,
-                    dec_column=args.dec_column,
-                )
+        futures.append(
+            client.submit(
+                mr.map_to_pixels,
+                input_file=file_path,
+                file_format=args.input_format,
+                filter_function=args.filter_function,
+                highest_order=args.highest_healpix_order,
+                ra_column=args.ra_column,
+                dec_column=args.dec_column,
+                shard_suffix=i,
+                cache_path=None if args.debug_stats_only else args.tmp_dir,
             )
-        else:
-            futures.append(
-                client.submit(
-                    _map_to_pixels,
-                    input_file=file_path,
-                    file_format=args.input_format,
-                    highest_order=args.highest_healpix_order,
-                    ra_column=args.ra_column,
-                    dec_column=args.dec_column,
-                    shard_suffix=i,
-                    cache_path=args.tmp_dir,
-                )
-            )
+        )
     if args.progress_bar:
         progress(futures)
     else:
@@ -123,9 +92,10 @@ def run_with_client(args, client):
     destination_pixel_map = hist.generate_destination_pixel_map(
         raw_histogram, pixel_map
     )
+    if not args.debug_stats_only:
+        _reduce_pixels(args, destination_pixel_map, client)
+
+    # All done - write out the metadata
     io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)
     io_utils.write_catalog_info(args, raw_histogram)
     io_utils.write_partition_info(args, destination_pixel_map)
-
-    if not args.debug_stats_only:
-        _reduce_pixels(args, destination_pixel_map, client)

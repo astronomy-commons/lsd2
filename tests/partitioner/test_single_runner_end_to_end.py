@@ -121,6 +121,7 @@ def test_small_sky_stats():
 
         assert not os.path.exists(output_file)
 
+
 def test_small_sky_filter():
     """Test loading the small sky catalog and and filtering odd object IDs"""
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -147,7 +148,7 @@ def test_small_sky_filter():
             args.catalog_path, "Norder0/Npix11", "catalog.parquet"
         )
 
-        expected_ids = [*range(700, 831,2)]
+        expected_ids = [*range(700, 831, 2)]
         ft.assert_parquet_file_ids(output_file, "id", expected_ids)
 
 
