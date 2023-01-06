@@ -10,7 +10,7 @@ def run(args: PartitionArguments):
     if not args:
         raise ValueError("partitioning arguments are required")
     if not isinstance(args, PartitionArguments):
-        raise ValueError("args must be type PartitionArguments")
+        raise ValueError(f"args must be type PartitionArguments (is {type(args)})")
 
     if args.runtime == "single":
         single_runner.run(args)

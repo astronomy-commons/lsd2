@@ -2,8 +2,8 @@
 
 import sys
 
-import runner
-from arguments import PartitionArguments
+import partitioner.runner as runner
+from partitioner.arguments import PartitionArguments
 
 if __name__ == "__main__":
     args = PartitionArguments()

@@ -184,6 +184,7 @@ class PartitionArguments:
         group.add_argument(
             "--progress_bar",
             help="should a progress bar be displayed?",
+            default=True,
             action="store_true",
         )
         group.add_argument(
@@ -384,6 +385,32 @@ class PartitionArguments:
         tmp_dir = tempfile.TemporaryDirectory(prefix=tmp_prefix)
         self.tmp_dir = tmp_dir.name
         self.contexts.append(tmp_dir)
+
+
+    def __str__(self):
+        formatted_string = (
+            f"  catalog_name {self.catalog_name}\n"
+            f"  input_path {self.input_path}\n"
+            f"  input format {self.input_format}\n"
+            f"  num input_paths {len(self.input_paths)}\n"
+            f"  ra_column {self.ra_column}\n"
+            f"  dec_column {self.dec_column}\n"
+            f"  ra_error_column {self.ra_error_column}\n"
+            f"  dec_error_column {self.dec_error_column}\n"
+            f"  id_column {self.id_column}\n"
+            f"  output_path {self.output_path}\n"
+            f"  overwrite {self.overwrite}\n"
+            f"  highest_healpix_order {self.highest_healpix_order}\n"
+            f"  pixel_threshold {self.pixel_threshold}\n"
+            f"  debug_stats_only {self.debug_stats_only}\n"
+            f"  progress_bar {self.progress_bar}\n"
+            f"  runtime {self.runtime}\n"
+            f"  dask_tmp {self.dask_tmp}\n"
+            f"  dask_n_workers {self.dask_n_workers}\n"
+            f"  dask_threads_per_worker {self.dask_threads_per_worker}\n"
+            f"  tmp_dir {self.tmp_dir}\n"
+        )
+        return formatted_string
 
 
 def passthrough_filter_function(data: pd.DataFrame) -> pd.DataFrame:
