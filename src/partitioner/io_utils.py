@@ -115,7 +115,9 @@ def write_partition_info(args, destination_pixel_map):
           - list of all source pixels at original order
     """
     metadata_filename = os.path.join(args.catalog_path, "partition_info.csv")
-    destination_pixel_map.to_csv(metadata_filename, index=False)
+    data_frame = pd.DataFrame(destination_pixel_map.keys())
+    data_frame.columns = ["order", "pixel", "num_objects"]
+    data_frame.to_csv(metadata_filename, index=False)
 
 
 def write_legacy_metadata(args, histogram, pixel_map):

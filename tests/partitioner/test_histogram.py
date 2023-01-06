@@ -153,11 +153,8 @@ def test_destination_pixel_map_order1():
     filled_pixels = [51, 29, 51, 0]
     initial_histogram[44:] = filled_pixels[:]
 
-    expected = pd.DataFrame(
-        data=[[0, 11, 131, [44, 45, 46]]],
-        columns=["order", "pixel", "num_objects", "origin_pixels"],
-    )
+    expected = {tuple([0, 11, 131]): [44, 45, 46]}
 
     result = hist.generate_destination_pixel_map(initial_histogram, alignment)
 
-    assert_frame_equal(result, expected)
+    npt.assert_array_equal(result, expected)

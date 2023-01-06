@@ -124,8 +124,8 @@ def test_write_catalog_info():
 def test_write_partition_info():
     """Test that we accurately write out the individual partition stats"""
     expected_lines = [
-        "order,pixel,num_objects,origin_pixels",
-        r'0,11,131,"\[44, 45, 46\]"',
+        "order,pixel,num_objects",
+        "0,11,131",
     ]
     with tempfile.TemporaryDirectory() as tmp_dir:
         args = PartitionArguments()
@@ -138,10 +138,7 @@ def test_write_partition_info():
             ra_column="ra",
             dec_column="dec",
         )
-        pixel_map = pd.DataFrame(
-            data=[[0, 11, 131, [44, 45, 46]]],
-            columns=["order", "pixel", "num_objects", "origin_pixels"],
-        )
+        pixel_map = {tuple([0, 11, 131]): [44, 45, 46]}
         io.write_partition_info(args, pixel_map)
         metadata_filename = os.path.join(tmp_dir, "small_sky", "partition_info.csv")
         ft.assert_text_file_matches(expected_lines, metadata_filename)

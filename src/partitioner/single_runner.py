@@ -13,12 +13,9 @@ def _generate_histogram(args):
     """Generate a raw histogram of object counts in each healpix pixel"""
 
     raw_histogram = hist.empty_histogram(args.highest_healpix_order)
-    iterator = (
-        tqdm(args.input_paths, desc="Mapping ")
-        if args.progress_bar
-        else args.input_paths
-    )
-    for i, file_path in enumerate(iterator):
+    for i, file_path in enumerate(
+        tqdm(args.input_paths, desc="Mapping ", disable=(not args.progress_bar))
+    ):
         partial_histogram = mr.map_to_pixels(
             input_file=file_path,
             file_format=args.input_format,
@@ -37,18 +34,17 @@ def _generate_histogram(args):
 def _reduce_pixels(args, destination_pixel_map):
     """Loop over destination pixels and merge into parquet files"""
 
-    iterator = (
-        tqdm(destination_pixel_map.iterrows(), desc="Reducing")
-        if args.progress_bar
-        else destination_pixel_map.iterrows()
-    )
-    for _, destination_pixel in iterator:
+    for destination_pixel, source_pixels in tqdm(
+        destination_pixel_map.items(),
+        desc="Reducing",
+        disable=(not args.progress_bar),
+    ):
         mr.reduce_shards(
             cache_path=args.tmp_dir,
-            origin_pixel_numbers=destination_pixel["origin_pixels"],
-            destination_pixel_order=destination_pixel["order"],
-            destination_pixel_number=destination_pixel["pixel"],
-            destination_pixel_size=destination_pixel["num_objects"],
+            origin_pixel_numbers=source_pixels,
+            destination_pixel_order=destination_pixel[0],
+            destination_pixel_number=destination_pixel[1],
+            destination_pixel_size=destination_pixel[2],
             output_path=args.catalog_path,
             id_column=args.id_column,
         )
@@ -64,17 +60,27 @@ def run(args):
         raise ValueError(f'runtime mismatch ({args.runtime} should be "single"')
 
     raw_histogram = _generate_histogram(args)
+
+    progress = tqdm(total=2, desc="Binning ", disable=(not args.progress_bar))
     pixel_map = hist.generate_alignment(
         raw_histogram, args.highest_healpix_order, args.pixel_threshold
     )
+    progress.update(1)
     destination_pixel_map = hist.generate_destination_pixel_map(
         raw_histogram, pixel_map
     )
+    progress.update(1)
+    progress.close()
 
     if not args.debug_stats_only:
         _reduce_pixels(args, destination_pixel_map)
 
     # All done - write out the metadata
+    progress = tqdm(total=3, desc="Finishing", disable=(not args.progress_bar))
     io_utils.write_legacy_metadata(args, raw_histogram, pixel_map)
+    progress.update(1)
     io_utils.write_catalog_info(args, raw_histogram)
+    progress.update(1)
     io_utils.write_partition_info(args, destination_pixel_map)
+    progress.update(1)
+    progress.close()
