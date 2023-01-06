@@ -3,8 +3,10 @@ import sys
 import glob
 import json
 
+import numpy as np
 from dask.distributed import Client, progress
-from collections import Counter
+import dask.dataframe as dd
+import pandas as pd
 
 from . import util
 from . import dask_utils as du
@@ -35,6 +37,7 @@ class Catalog():
         self.hips_metadata = None
         self.partitioner = None
         self.output_dir = None
+        self.result = None
         self.location = location
 
         if self.source == 'local':
@@ -120,10 +123,11 @@ class Catalog():
             print('No files Found!')
 
 
-    def cross_match(self, othercat=None, n_neighbors=3, dthresh=4.0, client=None, debug=False):
+    def distributued_cross_match(self, othercat=None, c1_cols=[], c2_cols=[], n_neighbors=1, dthresh=0.01, client=None, debug=False):
         '''
-            before figuring out output
-                output skymap histogram
+            Deprecated:
+            Utilizes dask.distributed to map the crossmatch algorithm across
+            the hipscat x hipscat map.
         '''
 
         assert othercat is not None, 'Must specify another catalog to crossmatch with.'
@@ -131,37 +135,113 @@ class Catalog():
 
         cat1_md = self.hips_metadata
         cat2_md = othercat.hips_metadata
-        nmatches = 0
+        
         hp_xmatch_map = util.map_catalog_hips(cat1_md['hips'], self.output_dir,
                 cat2_md['hips'], othercat.output_dir)
 
+        print(len(hp_xmatch_map))
+
         if debug:
             hp_xmatch_map = hp_xmatch_map[:5]
-            print(hp_xmatch_map)
+            print('DEBUGGING ONLY TAKING 5')
         
         if client:
             futures = client.map(
-                du._cross_match,
+                du._cross_match2,
                 hp_xmatch_map,
                 c1_md=cat1_md,
                 c2_md=cat2_md,
+                c1_cols=c1_cols,
+                c2_cols=c2_cols,
                 n_neighbors=n_neighbors,
                 dthresh=dthresh 
             )
             progress(futures)
             
-            nmatches = sum([x.result() for x in futures])
+            self.result = dd.concat([x.result() for x in futures])
 
         else:
             sys.exit('Not implemented')
 
-        print()
-        print(f'Total matches {nmatches}')
+        return self.result
 
 
-    def query(self, ra, dec, radius):
-        pass
+    def cross_match(self, othercat=None, c1_cols=[], c2_cols=[], n_neighbors=1, dthresh=0.01, debug=False):
+        '''
+            Parameters:
+                othercat- other hipscat catalog
 
+                user-defined columns to return for dataframe
+                c1_cols- dictionary of {column_name : dtype}
+                c2_cols- dictionary of {column_name : dtype}
+                    dtypes -> f8 - float, i9 - int, etc
+                n_neighbors - number of nearest neighbors to find for each souce in catalog1
+                dthresh- distance threshold for nearest neighbors (decimal degrees)
+        '''
+
+        assert othercat is not None, 'Must specify another catalog to crossmatch with.'
+        assert isinstance(othercat, Catalog), 'The other catalog must be an instance of hipscat.Catalog.'
+
+        #Gather the metadata from the already partitioned catalogs
+        cat1_md = self.hips_metadata
+        cat2_md = othercat.hips_metadata
+        
+        #use the metadata to calculate the hipscat1 x hipscat2 map
+        # this function finds the appropriate catalog parquet files to execute the crossmatches
+        # returns a [
+        #   [path/to/hipscat1/catalog.parquet, path/to/hipscat2/catalog.parquet]
+        # ]
+        hc_xmatch_map = util.map_catalog_hips(cat1_md['hips'], self.output_dir,
+                cat2_md['hips'], othercat.output_dir)
+
+        if debug:
+            print(len(hc_xmatch_map))
+            hc_xmatch_map = hc_xmatch_map[:5]
+            print('DEBUGGING ONLY TAKING 5')
+        
+        #This instantiates the dask.dataframe from the hc
+        #  just a table with columns = [catalog1_file_path, catalog2_file_path, other_xm_metadata...] 
+        matchcats_dict =util.xmatchmap_dict(hc_xmatch_map)
+        # ensure the number of partitions are the number cross-match operations so that memory is managed
+        nparts = len(matchcats_dict[list(matchcats_dict.keys())[0]])
+
+        matchcats_df = dd.from_pandas(
+            pd.DataFrame(
+                matchcats_dict, 
+                columns = list(matchcats_dict.keys())
+            ).reset_index(drop=True), 
+            npartitions=nparts
+        )
+
+        #estanblish the return columns for the returned dataframe's metadata
+        # dask.dataframe.map_partitions() requires the metadata of the resulting 
+        # dataframe to be defined prior to execution. The column names and datatypes
+        # are defined here and passed in the 'meta' variable
+        c1_cols = util.catalog_columns_selector_withdtype(cat1_md, c1_cols)
+        c2_cols = util.catalog_columns_selector_withdtype(cat2_md, c2_cols)
+
+        #populate metadata with column information 
+        # plus variables from the cross_match calculation
+        meta = {}
+        meta.update(c1_cols)
+        meta.update(c2_cols)
+        meta.update({
+            'hips_k':'i8', 
+            'hips_pix':'i8',
+            '_DIST':'f8'
+        })
+
+        #call the xmatch_from_daskdf function.
+        self.result = matchcats_df.map_partitions(
+            du.xmatch_from_daskdf,
+            cat1_md, cat2_md, 
+            c1_cols.keys(), c2_cols.keys(),
+            n_neighbors=n_neighbors,
+            dthresh=dthresh,
+            meta = meta
+        )
+        return self.result
+    
 
 if __name__ == '__main__':
     import time

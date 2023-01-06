@@ -32,6 +32,7 @@ def download_ztf(client=None):
     c.hips_import(file_source='/data/epyc/projects/lsd2/pzwarehouse/ztf_dr7/', fmt='parquet', debug=True,
         ra_kw='ra', dec_kw='dec', id_kw='ps1_objid', verbose=True, threshold=250_000, limit=10, client=client)
 
+
 def download_ps1(client=None):
     '''
         ask Eric or Collin what are the contents of the ztf files
@@ -42,17 +43,72 @@ def download_ps1(client=None):
         ra_kw=5, dec_kw=6, id_kw=0, verbose=True, threshold=250_000, limit=10, client=client)
 
 
-def xmatch(client=None):
-    c1 = hc.Catalog('sdss_test')
+def xmatch_distributed(client=None):
+    import numpy as np
+
+    c1 = hc.Catalog('des_y1a1_gold')
     c2 = hc.Catalog('gaia_real')
-    c1.cross_match(c2, client=client, debug=True)
+
+    #define columns to retain for each catalog after cross_match
+    c1_cols = ['RA', 'DEC', 'COADD_OBJECTS_ID',]
+    c2_cols = ['ra', 'dec', 'pmra', 'pmdec', 'source_id']
+
+    result = c1.distributued_cross_match(
+        c2, 
+        c1_cols=c1_cols, 
+        c2_cols=c2_cols, 
+        n_neighbors=1, 
+        client=client, 
+        debug=False
+    ).assign(
+        filter1=lambda x: x.COADD_OBJECTS_ID % 5, 
+       	filter2=lambda x:np.sqrt(x.pmra**2 + x.pmdec**2)
+    ).query(
+        'filter1 > 3 and filter2 > 10.0'
+    ).compute()
+
+    print()
+    print(len(result))
+
+def xmatch_dataframe():
+    import numpy as np
+
+    c1 = hc.Catalog('des_y1a1_gold')
+    c2 = hc.Catalog('gaia_real')
+
+    #define columns to retain for each catalog after cross_match
+
+    # test to see if datatype is necessary
+    # look into opening entire catalog into one dataframe with pathway=glob
+    c1_cols = {}
+    c2_cols = {'pmra':'f8', 'pmdec':'f8'}
+
+
+    result = c1.cross_match(
+        c2, 
+        c1_cols=c1_cols, 
+        c2_cols=c2_cols, 
+        n_neighbors=1, 
+        debug=False
+    ).assign(
+        filter1=lambda x: x.COADD_OBJECTS_ID % 5, 
+       	filter2=lambda x: np.sqrt(x.pmra**2 + x.pmdec**2)
+    ).query(
+        'filter1 > 3 and filter2 > 10.0'
+    ).compute()
+
+    print(result.head())
+    print(len(result))
 
 if __name__ == '__main__':
     import time
-    client = Client(local_directory='/epyc/projects3/sam_hipscat/', n_workers=48, threads_per_worker=1)
+    import gc
+    #gc.set_debug(gc.DEBUG_LEAK)
+    client = Client(local_directory='/epyc/projects3/sam_hipscat/', n_workers=48, threads_per_worker=2)
     #client=None
     s = time.time()
     #download_sdss(client=client)
-    xmatch(client=client)
+    xmatch_dataframe()
     e = time.time()
     print(f'Elapsed Time: {e-s}')
+    #client.close()
