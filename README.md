@@ -112,7 +112,7 @@ When this runs, it will create two directories in the specified `location` param
 
 It will also create a catalog `metadata.json` that it contains the basic metadata from the partitioning instatiation and running. 
 
-### Cone-searching (return a computable `dask.dataframe`)
+### Cone-searching (return a comput-able `dask.dataframe`)
 
 Perform cone-search on hipscat. Input params:
 * ra - Right Ascension (decimal degrees)
