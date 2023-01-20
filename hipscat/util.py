@@ -7,6 +7,63 @@ import os
 from bs4 import BeautifulSoup, SoupStrainer
 
 
+def compute_index(ra, dec, order=20):
+    # the 64-bit index, viewed as a bit array, consists of two parts:
+    #
+    #    idx = |(pix)|(rank)|
+    #
+    # where pix is the healpix nest-scheme index of for given order,
+    # and rank is a monotonically increasing integer for all objects
+    # with the same value of pix.
+
+    # compute the healpix pix-index of each object
+    pix = hp.ang2pix(2**order, ra, dec, nest=True, lonlat=True)
+
+    # shift to higher bits of idx
+    bits=4 + 2*order
+    idx = pix.astype(np.uint64) << (64-bits)
+
+    # sort
+    orig_idx = np.arange(len(idx))
+    sorted_idx = np.lexsort((dec, ra, idx))
+    idx, ra, dec, orig_idx = idx[sorted_idx], ra[sorted_idx], dec[sorted_idx], orig_idx[sorted_idx]
+
+    # compute the rank for each unique value of idx (== bitshifted pix, at this point)
+    # the goal: given values of idx such as:
+    #   1000, 1000, 1000, 2000, 2000, 3000, 5000, 5000, 5000, 5000, ...
+    # compute a unique array such as:
+    #   1000, 1001, 1002, 2000, 2001, 3000, 5000, 5001, 5002, 5003, ...
+    # that is for the subset of nobj objects with the same pix, add
+    # to the index an range [0..nobj)
+    #
+    # how this works:
+    # * x are the indices of the first appearance of a new pix value. In the example above,
+    # it would be equal to [0, 3, 5, 6, ...]. But note that this is also the total number
+    # of entries before the next unique value (e.g. 5 above means there were 5 elements in
+    # idx -- 1000, 1000, 1000, 2000, 2000 -- before the third unique value of idx -- 3000)
+    # * i are the indices of each unique value of idx, starting with 0 for the first one
+    # in the example above, i = [0, 0, 0, 1, 1, 2, 3, 3, 3, 3]
+    # * we need construct an array such as [0, 1, 2, 0, 1, 0, 0, 1, 2, 3, ...], i.e.
+    # a one that resets every time the value of idx changes. If we can construct this, we
+    # can add this array to idx and achieve our objective.
+    # * the way to do it: start with a monotonously increasing array
+    #  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...] and subtract an array that looks like this:
+    #  [0, 0, 0, 3, 3, 5, 6, 7, 7, 7, ...]. This is an array that at each location has
+    #  the index where that location's pix value appeared for the first time. It's easy
+    #  to confirm that this is simply x[i].
+    #
+    # And this is what the following four lines implement.
+    _, x, i = np.unique(idx, return_inverse=True, return_index=True)
+    x = x.astype(np.uint64)
+    ii = np.arange(len(i), dtype=np.uint64)
+    di = ii - x[i]
+    idx += di
+
+    # remap back to the old sort order
+    idx = idx[orig_idx]
+
+    return idx
+
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types """
     def default(self, obj):
@@ -116,7 +173,9 @@ def map_catalog_hips(cat1_hips, cat1_outputdir, cat2_hips, cat2_outputdir, debug
                                                'catalog.parquet')
                     c2_cat_path = os.path.join(cat2_outputdir, f'Norder{mo}', f'Npix{mp}',
                                                'catalog.parquet')
-                    ret.append([c1_cat_path, c2_cat_path])
+                    res = [c1_cat_path, c2_cat_path]
+                    if res not in ret:
+                        ret.append([c1_cat_path, c2_cat_path])
                     
                     if debug:
                         print(f'C1 {o}:{p} --> C2 {mo}:{mp}')
@@ -151,8 +210,8 @@ def gnomonic(lon, lat, clon, clat):
 def gc_dist(lon1, lat1, lon2, lat2):
     '''
         function that calculates the distance between two points
-            p1 (lon1, lat1)
-            p2 (lon2, lat2)
+            p1 (lon1, lat1) or (ra1, dec1)
+            p2 (lon2, lat2) or (ra2, dec2)
 
             can be np.array()
             returns np.array()
@@ -264,6 +323,28 @@ def establish_pd_meta(c1_cols, c2_cols):
     return colnames
 
 
+def rename_meta_dict(c1_cols, c2_cols):
+    c2keys = list(c2_cols.keys())
+    for c2k in c2keys:
+        if c2k in c1_cols.keys():
+            c2_cols[f'{c2k}_2'] = c2_cols.pop(c2k)
+    return c2_cols
+
+
+def frame_rename_cols(df, cols, suffix='_2'):
+    if len(cols):
+        rename_cols = {}
+        for c in cols:
+            if str(c).endswith(suffix):
+                rename_cols[c.split(suffix)[0]] = c
+        if rename_cols:
+            #print(rename_cols == {'ra':'ra_2', 'dec':'dec_2', 'source_id':'source_id_2'})
+            df.rename(columns = rename_cols, inplace = True)
+        
+        df = df[cols]
+
+    return df
+
 def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
     '''
         df=pandas.dataframe() from catalog
@@ -283,35 +364,56 @@ def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
     
         TODO: select columns in the pd.read_parquet(...) command
     '''
-
+    
     if tocull:
+        df.copy()
         df['hips_pix'] = hp.ang2pix(2**order, 
             df[df_md['ra_kw']].values, 
             df[df_md['dec_kw']].values, 
             lonlat=True, nest=True
         )
         df = df.loc[df['hips_pix'].isin([pix])]
-    
-    #user specifies which columns to return
+
     if len(cols):
-        #ensure user doesn't cull the ra,dec,and id columns
-        expected_cols = [
-            df_md['ra_kw'],
-            df_md['dec_kw'],
-            df_md['id_kw']
-        ]
-        for ec in expected_cols:
-            if ec not in cols:
-                cols.append(ec)
         df = df[cols]
 
     return df
+
+def find_pixels_in_disc_at_efficient_order(ra, dec, radius):
+
+    vec = hp.ang2vec(ra, dec, lonlat=True)
+    rad = np.radians(radius)
+    pixels_in_disc = []
+    order = 5 #start at a decent order
+    keepon = True
+    while keepon:
+        nside = hp.order2nside(order)
+        pixels_in_disc = hp.query_disc(nside, vec, rad, nest=True)
+        if len(pixels_in_disc) > 1:
+            keepon = False
+        else:
+            order += 1
+
+    return order, pixels_in_disc
+
+
+def cmd_rename_kws(cols, md):
+    for c in cols:
+        if str(c).endswith('_2'):
+            cmod = c.split('_2')[0]
+            if cmod == md['ra_kw']:
+                md['ra_kw'] = c
+            if cmod == md['dec_kw']:
+                md['dec_kw'] = c
+            if cmod == md['id_kw']:
+                md['id_kw'] = c
+    return md
 
 
 def frame_gnomonic(df, df_md, clon, clat):
     '''
     method taken from lsd1
-        creates a list of gnomonic distances for each source in the dataframe
+        creates a np.array of gnomonic distances for each source in the dataframe
         from the center of the ordered pixel. These values are passed into 
         the kdtree NN query during the xmach routine.
     '''

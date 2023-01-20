@@ -21,11 +21,12 @@ from . import dask_utils as du
 class Partitioner():
 
     def __init__(self, catname, urls=[], fmt='csv', ra_kw='ra', dec_kw='dec', 
-        id_kw='source_id',  order_k=5, output='output', cache='cache', 
-        verbose=False, debug=False, location=os.getcwd()):
+        id_kw='source_id',  order_k=5, output='output', cache='cache', threshold=1_000_000,
+        verbose=False, debug=False, location=os.getcwd(), skiprows=None):
 
         self.catname = catname
         self.urls = urls
+        self.skiprows = skiprows
         self.fmt = fmt
         self.ra_kw = ra_kw
         self.dec_kw = dec_kw
@@ -42,7 +43,7 @@ class Partitioner():
         self.opix = None
         self.hips_structure = None
         self.output_written = False
-        self.threshold = None
+        self.threshold = threshold
 
         assert self.fmt in ['csv', 'parquet', 'csv.gz', 'fits'], \
             'Source catalog file format not implemented. csv, csv.gz, fits, and parquet\
@@ -68,9 +69,9 @@ class Partitioner():
         os.makedirs(self.output_dir, exist_ok=True)
 
 
-    def run(self, client=None, threshold=1_000_000):
+    def run(self, client=None):
         self.gather_statistics()
-        self.compute_partitioning_map(max_counts_per_partition=threshold)
+        self.compute_partitioning_map(max_counts_per_partition=self.threshold)
         if client:
             self.write_partitioned_structure_wdask(client=client)
             self.structure_map_reduce_wdask(client=client)
@@ -89,7 +90,7 @@ class Partitioner():
         #
         # returns: img (self.order_k healpix map with object counts)
 
-        mapFn = os.path.join(self.cache_dir, f'{self.catname}_order{self.order_k}_hpmap.fits')
+        mapFn = os.path.join(self.output_dir, f'{self.catname}_order{self.order_k}_hpmap.fits')
         if writeread_cache:
             if os.path.exists(mapFn):
                 try:
@@ -109,7 +110,7 @@ class Partitioner():
                 partial(
                     du._gather_statistics_hpix_hist,
                         k=self.order_k, cache_dir=self.cache_dir, fmt=self.fmt,
-                        ra_kw=self.ra_kw, dec_kw=self.dec_kw
+                        ra_kw=self.ra_kw, dec_kw=self.dec_kw, skiprows=self.skiprows,
                     ),
                 sum, split_every=3
             ).compute()
@@ -125,6 +126,9 @@ class Partitioner():
 
 
     def compute_partitioning_map(self, max_counts_per_partition=1_000_000):
+
+        if self.verbose:
+            print(f'Computing paritioning map')
 
         # the output
         orders = np.full(len(self.img), -1) # healpix map of orders
@@ -189,8 +193,8 @@ class Partitioner():
                                                             # indices of pixels that fall into order-o
                                                             # pixels stored in pixo
                 orders[pixk] = o
-                if self.verbose:
-                    print(o, np.count_nonzero(orders == -1), len(pixo))
+                #if self.verbose:
+                #    print(o, np.count_nonzero(orders == -1), len(pixo))
 
 
         assert not (orders == -1).any()
@@ -352,6 +356,9 @@ class Partitioner():
 
 
     def write_partitioned_structure_wdask(self, client):
+        if self.verbose:
+            print(f'Writing partitioned structure')
+
         if not self.opix:
             print('Error: Partitioning map must be computed before writing partitioned structure')
             return
@@ -384,12 +391,15 @@ class Partitioner():
             dec_kw=self.dec_kw,
             id_kw=self.id_kw
         )
-
-        progress(futures)
+        r = [x.result() for x in futures]
+        #progress(futures)
         self.output_written = True
 
 
     def structure_map_reduce_wdask(self, client):
+        if self.verbose:
+            print(f'Reducing written structure')
+
         if not self.output_written:
             print('Error: Partitioning map must be computed before reducing')
             return
@@ -411,8 +421,14 @@ class Partitioner():
                 pix_directories.append(os.path.join(self.output_dir, k_dir, pix_dir))
 
         self.hips_structure = hips_structure
-        futures = client.map(du._map_reduce, pix_directories)
-        progress(futures)
+        futures = client.map(
+            du._map_reduce, pix_directories,
+            ra_kw=self.ra_kw,
+            dec_kw=self.dec_kw
+        )
+
+        r = [x.result() for x in futures]
+        #progress(futures)
 
 
     def write_structure_metadata(self):
