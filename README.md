@@ -110,7 +110,32 @@ When this runs, it will create two directories in the specified `location` param
    -> [NpixN/catalog.parquet]
 ```
 
-It will also create a `meta_data.json` that it contains the basic metadata from the partitioning instatiation and running. 
+It will also create a catalog `metadata.json` that it contains the basic metadata from the partitioning instatiation and running. 
+
+### Cone-searching (return a computable `dask.dataframe`)
+
+Perform cone-search on hipscat. Input params:
+* ra - Right Ascension (decimal degrees)
+* dec - Declination (decimal degrees)
+* radius - Radius of disc to search in (decimal degrees)
+* columns - List of columns in catalog to return.
+
+Returns: `dask.dataframe`. 
+* can leverage the dataframe api and further analyze result
+
+```python
+c1 = hc.Catalog('gaia', location='/path/to/hips/catalog/')
+mygaia_conesearch = c1.cone_search(
+  ra=56, 
+  dec=20,
+  radius=10.0,
+  columns=['ra', 'dec', 'source_id', 'pmra', 'pmdec']
+)
+
+#Nothing is executed until you performe the .compute()
+mygaia_conesearch.compute()
+```
+
 
 ### Cross-matching (returns comput-able `dask.dataframe`)
 
@@ -151,4 +176,4 @@ r3 = result.assign( #create a new column from the result
   "path/to/my/parquet/"
 ).compute() 
 ```
-A list of example use-cases are viewable in the `/examples/hipscat_tests.py` script.
+A tutorial of use-cases are viewable in the `/examples/example_usage.ipynb` notebook.
