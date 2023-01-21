@@ -328,6 +328,8 @@ def xmatch_from_daskdf(df, c1_md, c2_md, c1_cols, c2_cols, n_neighbors=1, dthres
         c1_df = pd.read_parquet(c1, engine='pyarrow')
         c2_df = pd.read_parquet(c2, engine='pyarrow')
 
+        #if c1 and c2 columnames have the same column names
+        # append a suffix _2 to the second catalog
         c2_md = util.cmd_rename_kws(c2_cols, c2_md)
         c2_df = util.frame_rename_cols(c2_df, cols=c2_cols)
 
@@ -364,7 +366,7 @@ def xmatch_from_daskdf(df, c1_md, c2_md, c1_cols, c2_cols, n_neighbors=1, dthres
             tree = KDTree(xy2, leaf_size=2)
             #find the indicies for the nearest neighbors 
             #this is the cross-match calculation
-            dists, inds = tree.query(xy1, k=n_neighbors)
+            dists, inds = tree.query(xy1, k=min([n_neighbors, len(xy2)]))
 
             #numpy indice magic for the joining of the two catalogs
             outIdx = np.arange(len(c1_df)*n_neighbors) # index of each row in the output table (0... number of output rows)

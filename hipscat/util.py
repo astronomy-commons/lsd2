@@ -316,6 +316,9 @@ def catalog_columns_selector_withdtype(cat_md, cols):
 
 
 def establish_pd_meta(c1_cols, c2_cols):
+    '''
+        the return type from cross_match routine metadata columns
+    '''
     colnames = []
     colnames.extend(c1_cols)
     colnames.extend(c2_cols)
@@ -323,15 +326,25 @@ def establish_pd_meta(c1_cols, c2_cols):
     return colnames
 
 
-def rename_meta_dict(c1_cols, c2_cols):
+def rename_meta_dict(c1_cols, c2_cols, suffix='_2'):
+    '''
+        finds columns with the same name and appends
+        a suffix to the column name. Should only be applied
+        to the c2_cols dictionary
+    '''
     c2keys = list(c2_cols.keys())
     for c2k in c2keys:
         if c2k in c1_cols.keys():
-            c2_cols[f'{c2k}_2'] = c2_cols.pop(c2k)
+            c2_cols[f'{c2k}{suffix}'] = c2_cols.pop(c2k)
     return c2_cols
 
 
 def frame_rename_cols(df, cols, suffix='_2'):
+    '''
+        renames the columns in a dataframe
+        called from cross_match routine when two catalogs 
+         have the same column names in the return
+    '''
     if len(cols):
         rename_cols = {}
         for c in cols:
@@ -366,7 +379,6 @@ def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
     '''
     
     if tocull:
-        df.copy()
         df['hips_pix'] = hp.ang2pix(2**order, 
             df[df_md['ra_kw']].values, 
             df[df_md['dec_kw']].values, 
@@ -380,6 +392,12 @@ def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
     return df
 
 def find_pixels_in_disc_at_efficient_order(ra, dec, radius):
+    '''
+        finds the adequate order at which to find pixels in conesearch to query
+        if the user searches for a cone with r=0.001,
+        the order/nside must increase to get a result from 
+        hp.query_disc()
+    '''
 
     vec = hp.ang2vec(ra, dec, lonlat=True)
     rad = np.radians(radius)
@@ -397,10 +415,15 @@ def find_pixels_in_disc_at_efficient_order(ra, dec, radius):
     return order, pixels_in_disc
 
 
-def cmd_rename_kws(cols, md):
+def cmd_rename_kws(cols, md, suffix='_2'):
+    '''
+        updates the metadata dictionary kw's to reflect same column names
+        if there is a column name with an _2 suffix,
+        then make the metadata kw params reflect that as well
+    '''
     for c in cols:
-        if str(c).endswith('_2'):
-            cmod = c.split('_2')[0]
+        if str(c).endswith(suffix):
+            cmod = c.split(suffix)[0]
             if cmod == md['ra_kw']:
                 md['ra_kw'] = c
             if cmod == md['dec_kw']:
@@ -412,7 +435,7 @@ def cmd_rename_kws(cols, md):
 
 def frame_gnomonic(df, df_md, clon, clat):
     '''
-    method taken from lsd1
+        method taken from lsd1:
         creates a np.array of gnomonic distances for each source in the dataframe
         from the center of the ordered pixel. These values are passed into 
         the kdtree NN query during the xmach routine.
