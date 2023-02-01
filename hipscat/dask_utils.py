@@ -12,6 +12,8 @@ import dask.dataframe as dd
 import dask
 
 from astropy.table import Table
+from astropy.coordinates import SkyCoord
+from regions import PixCoord, PolygonSkyRegion, PolygonPixelRegion
 from functools import partial
 from dask.distributed import Client, progress
 from dask.delayed import delayed
@@ -62,7 +64,7 @@ def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw):
     return img
 
 
-def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, dec_kw, id_kw):
+def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, dec_kw, id_kw, neighbor_pix, highest_k):
 
     base_filename = os.path.basename(url).split('.')[0]
     parqFn = os.path.join(cache_dir, base_filename + '.parquet')
@@ -73,6 +75,15 @@ def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, 
         ra_kw = df.keys()[ra_kw]
         dec_kw = df.keys()[dec_kw]
         id_kw = df.keys()[id_kw]
+
+    # write the margin data
+    df['margin_pix'] = hp.ang2pix(2**highest_k, df[ra_kw].values, df[dec_kw].values, lonlat=True, nest=True)
+
+    neighbor_cache_df = df.merge(neighbor_pix, on='margin_pix')
+
+    res = neighbor_cache_df.groupby(['part_pix', 'part_order']).apply(_to_neighbor_cache, hipsPath=output_dir, base_filename=base_filename, ra_kw=ra_kw, dec_kw=dec_kw)
+
+    del neighbor_cache_df
 
     for k in orders:
         df['hips_k'] = k
@@ -100,25 +111,50 @@ def _map_reduce(output_dir):
     #print(output_dirs)
     #for output_dir in output_dirs:
 
-    dfs = []
+    cat_dfs = []
     files = os.listdir(os.path.join(output_dir))
-    if len(files) == 1:
-        fn = os.path.join(output_dir, files[0])
+    catalog_files = list(filter(lambda f: len(f) > 15 and f[-15:] == 'catalog.parquet', files))
+    neighbor_files = list(filter(lambda f: len(f) > 16 and f[-16:] == 'neighbor.parquet', files))
+    if len(catalog_files) == 1:
+        fn = os.path.join(output_dir, catalog_files[0])
         df = pd.read_parquet(fn, engine='pyarrow')
         new_fn = os.path.join(output_dir, 'catalog.parquet')
         os.rename(fn, new_fn)
         #shutil.copyfile(fn, new_fn)
     else:
-        for f in files:
+        for f in catalog_files:
             fn = os.path.join(output_dir, f)
-            dfs.append(pd.read_parquet(fn, engine='pyarrow'))
+            cat_dfs.append(pd.read_parquet(fn, engine='pyarrow'))
             os.remove(fn)
 
-        df = pd.concat(dfs, sort=False)
+        df = pd.concat(cat_dfs, sort=False)
         output_fn = os.path.join(output_dir, 'catalog.parquet')
         df.to_parquet(output_fn)
 
     del df
+    del cat_dfs
+
+    nei_dfs = []
+
+    if len(neighbor_files) == 1:
+        fn = os.path.join(output_dir, neighbor_files[0])
+        df = pd.read_parquet(fn, engine='pyarrow')
+        new_fn = os.path.join(output_dir, 'neighbor.parquet')
+        os.rename(fn, new_fn)
+        #shutil.copyfile(fn, new_fn)
+    else:
+        for f in neighbor_files:
+            fn = os.path.join(output_dir, f)
+            nei_dfs.append(pd.read_parquet(fn, engine='pyarrow'))
+            os.remove(fn)
+
+        df = pd.concat(nei_dfs, sort=False)
+        output_fn = os.path.join(output_dir, 'neighbor.parquet')
+        df.to_parquet(output_fn)
+
+    del df
+    del nei_dfs
+
     return 0
 
 
@@ -154,6 +190,62 @@ def _to_hips(df, hipsPath, base_filename):
     # return the number of records written
     return len(df)
 
+def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
+    # WARNING: only to be used from df2hips(); it's defined out here just for debugging
+    # convenience.
+
+    # grab the order and pix number for this dataframe. Since this function
+    # is intented to be called with apply() after running groupby on (k, pix), these must
+    # be the same throughout the entire dataframe
+    output_parquet = True
+    k, pix = df['part_order'].iloc[0],  df['part_pix'].iloc[0]
+    assert (df['part_pix'] == pix).all()
+    assert (df['part_order']   ==   k).all()
+
+    resolution = hp.nside2resol(2**k, arcmin=True) / 60.
+    resolution_and_thresh = resolution + 0.1
+    scale = (resolution_and_thresh**2) / (resolution**2)
+    scale_matrix = np.array([scale, 0],
+                            [0, scale])
+
+    # create the rough boundaries of the threshold bounding region.
+    # TODO: create a scaling affine transform that will scale this region to cover the
+    # necessary threshold.
+    pixel_boundaries = hp.vec2ang(hp.boundaries(2**k, pix, nest=True), lonlat=True)
+    vertices = PixCoord(x=pixel_boundaries[0], y=pixel_boundaries[1])
+    pixel_region = PolygonPixelRegion(vertices=vertices)
+
+    df['margin_check'] = _check_margin_bounds(df[ra_kw].values, df[dec_kw].values, pixel_region)
+
+    margin_df = df.loc[df['margin_check'] == True]
+
+    # construct the output directory and filename
+    dir = os.path.join(hipsPath, f'Norder{k}/Npix{pix}')
+    if output_parquet:
+        fn  = os.path.join(dir, f'{base_filename}_neighbor.parquet')
+    else:
+        fn  = os.path.join(dir, f'{base_filename}_neighbor.csv')
+
+    # create dir if it doesn't exist
+    os.makedirs(dir, exist_ok=True)
+
+    # write to the file (append if it already exists)
+    # also, write the header only if the file doesn't already exist
+    if output_parquet:
+        margin_df.to_parquet(fn)
+    else:
+        margin_df.to_csv(fn, mode='a', index=False, header=not os.path.exists(fn))
+
+    # return the number of records written
+    return len(df)
+
+def _check_margin_bounds(ra, dec, pixel_region):
+    res = []
+    for i in range(len(ra)):
+        sc = PixCoord(x=ra[i], y=dec[i])
+        in_bounds = pixel_region.contains(sc)
+        res.append(in_bounds)
+    return res
 
 def _cross_match2(match_cats, c1_md, c2_md, c1_cols=[], c2_cols=[],  n_neighbors=1, dthresh=0.01):
 
@@ -228,13 +320,13 @@ def _cross_match2(match_cats, c1_md, c2_md, c1_cols=[], c2_cols=[],  n_neighbors
 
 def xmatch_from_daskdf(df, c1_md, c2_md, c1_cols, c2_cols,n_neighbors=1, dthresh=0.01):
     '''
-    mapped function for calculating a cross_match between a partitioned dataframe 
+    mapped function for calculating a cross_match between a partitioned dataframe
      with columns [C1, C2, Order, Pix, ToCull1, ToCull2]
         C1 is the pathway to the catalog1.parquet file
         C2 is the pathway to the catalog2.parquet file
         Order is the healpix order
         Pix is the healpix pixel at the order for the calculation
-        ToCull1 is a boolean which represents the original C1 file's healpix order > 
+        ToCull1 is a boolean which represents the original C1 file's healpix order >
             than C2, thus the number of sources is potentiall 4 times greater than
             the number of sources in C2. We can optimize the comparison calculation
             by culling the sources from C1 that aren't in C2's order/pixel
@@ -242,7 +334,7 @@ def xmatch_from_daskdf(df, c1_md, c2_md, c1_cols, c2_cols,n_neighbors=1, dthresh
     '''
 
     vals = zip(
-        df['C1'], 
+        df['C1'],
         df['C2'],
         df['Order'],
         df['Pix'],
@@ -261,7 +353,7 @@ def xmatch_from_daskdf(df, c1_md, c2_md, c1_cols, c2_cols,n_neighbors=1, dthresh
 
         # TODO: enforcemetadata=False
         # TODO: select columns in the pd.read_parquet(...) command
-        # try/except is here because when enforcemetadata=True, it passes in 
+        # try/except is here because when enforcemetadata=True, it passes in
         #  a test-dataframe that has values for filepaths as 'foo'/'bar'
         #  which breaks opening the pandas.read_parquet()
         try:
@@ -287,19 +379,19 @@ def xmatch_from_daskdf(df, c1_md, c2_md, c1_cols, c2_cols,n_neighbors=1, dthresh
                 cols=c2_cols,
                 tocull=tocull2
             )
-            
-            #Sometimes the c1_df or c2_df contain zero sources 
+
+            #Sometimes the c1_df or c2_df contain zero sources
             # after culling
             if len(c1_df) and len(c2_df):
 
-                #calculate the xy gnomonic positions from the 
+                #calculate the xy gnomonic positions from the
                 # pixel's center for each dataframe
                 xy1 = util.frame_gnomonic(c1_df, c1_md, clon, clat)
                 xy2 = util.frame_gnomonic(c2_df, c2_md, clon, clat)
 
                 #construct the KDTree from the comparative catalog: c2/xy2
                 tree = KDTree(xy2, leaf_size=2)
-                #find the indicies for the nearest neighbors 
+                #find the indicies for the nearest neighbors
                 #this is the cross-match calculation
                 dists, inds = tree.query(xy1, k=n_neighbors)
 

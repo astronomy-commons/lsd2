@@ -14,14 +14,15 @@ from dask.distributed import Client, progress
 
 from . import util
 from . import dask_utils as du
+from . import margin_utils as mu
 #import util
 #import dask_utils as du
 
 
 class Partitioner():
 
-    def __init__(self, catname, urls=[], fmt='csv', ra_kw='ra', dec_kw='dec', 
-        id_kw='source_id',  order_k=5, output='output', cache='cache', 
+    def __init__(self, catname, urls=[], fmt='csv', ra_kw='ra', dec_kw='dec',
+        id_kw='source_id',  order_k=5, output='output', cache='cache',
         verbose=False, debug=False, location=os.getcwd()):
 
         self.catname = catname
@@ -36,13 +37,17 @@ class Partitioner():
         self.order_k = order_k
         self.verbose = verbose
         self.debug = debug
-        
+
         self.img = None
         self.orders = None
         self.opix = None
         self.hips_structure = None
         self.output_written = False
         self.threshold = None
+
+        # the order at which we will preform the margin pixel assignments
+        # needs to be equal to or greater than the highest order of partition.
+        self.highest_k = 7
 
         assert self.fmt in ['csv', 'parquet', 'csv.gz', 'fits'], \
             'Source catalog file format not implemented. csv, csv.gz, fits, and parquet\
@@ -132,6 +137,8 @@ class Partitioner():
 
         self.threshold = max_counts_per_partition
 
+        neighbor_pix = []
+
         # Top-down partitioning. Given a dataset partitioned at order k
         # bin it to higher orders (starting at 0, and working our way
         # down to k), and at each order find pixels whose count has
@@ -179,13 +186,20 @@ class Partitioner():
             # These are the one which we will keep at this order.
             pixo, = np.nonzero(active & (imgo < self.threshold))
 
+            neighbors_pixo, = np.nonzero(active & (imgo < self.threshold) & (imgo > 0))
+
             if len(pixo):
                 opix[o] = pixo # store output
+
+                for pix in neighbors_pixo:
+                    margin_pix = mu.get_margin(o, pix, self.highest_k-o)
+                    for mp in margin_pix:
+                        neighbor_pix.append([mp, pix, o])
 
                 # record the order-k indices which have been assigned to the
                 # partition at this level (order o). This makes it easy to
                 # check which ones are still left to process (see the 'active=...' line above)
-                pixk = idx.reshape(-1, k2o)[pixo].flatten()  # this bit of magic generates all order-k 
+                pixk = idx.reshape(-1, k2o)[pixo].flatten()  # this bit of magic generates all order-k
                                                             # indices of pixels that fall into order-o
                                                             # pixels stored in pixo
                 orders[pixk] = o
@@ -196,11 +210,17 @@ class Partitioner():
         assert not (orders == -1).any()
         self.orders = orders
         self.opix = opix
+        self.neighbor_pix = pd.DataFrame(neighbor_pix, columns=['margin_pix', 'part_pix', 'part_order'])
 
         if self.debug:
             hp.mollview(self.orders, title=f'partitions', nest=True)
             plt.show()
 
+            margin_img = np.zeros(hp.order2npix(self.highest_k))
+            margin_img[self.neighbor_pix['margin_pix']] = 1
+
+            hp.mollview(margin_img, title=f'margin cache', nest=True)
+            plt.show()
 
     def write_partitioned_structure(self):
         if not self.opix:
@@ -284,7 +304,7 @@ class Partitioner():
                 if self.verbose:
                     print(f'Number of sources after culling: {len(df)}')
 
-                #groups the sources in order_k pixels, then outputs them to the base_filename sources
+                # groups the sources in order_k pixels, then outputs them to the base_filename sources
                 ret = order_df.groupby(['hips_k', 'hips_pix']).apply(
                         du._to_hips,
                         hipsPath=self.output_dir,
@@ -382,7 +402,9 @@ class Partitioner():
             opix=self.opix,
             ra_kw=self.ra_kw,
             dec_kw=self.dec_kw,
-            id_kw=self.id_kw
+            id_kw=self.id_kw,
+            neighbor_pix=self.neighbor_pix,
+            highest_k=self.highest_k
         )
 
         progress(futures)
@@ -418,7 +440,7 @@ class Partitioner():
     def write_structure_metadata(self):
         if not self.hips_structure:
             print('Error')
-        
+
         metadata = {}
         metadata['cat_name'] = self.catname
         metadata['ra_kw'] = self.ra_kw
@@ -431,8 +453,8 @@ class Partitioner():
 
         dumped_metadata = json.dumps(metadata, indent=4, cls=util.NumpyEncoder)
         with open(os.path.join(self.output_dir, f'{self.catname}_meta.json'), 'w') as f:
-            f.write(dumped_metadata + '\n') 
-        
+            f.write(dumped_metadata + '\n')
+
         if self.debug:
             print(dumped_metadata)
 

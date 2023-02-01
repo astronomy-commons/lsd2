@@ -74,12 +74,12 @@ class Catalog():
         #implement lazy loading here
 
 
-    def hips_import(self, file_source='/data2/epyc/data/gaia_edr3_csv/', 
-        fmt='csv.gz', debug=False, verbose=True, limit=None, threshold=1_000_000, 
+    def hips_import(self, file_source='/data2/epyc/data/gaia_edr3_csv/',
+        fmt='csv.gz', debug=False, verbose=True, limit=None, threshold=1_000_000,
         ra_kw='ra', dec_kw='dec', id_kw='source_id', client=None):
 
         '''
-            ingests a list of source catalog files and partitions them out based 
+            ingests a list of source catalog files and partitions them out based
             on hierarchical partitioning of size on healpix map
 
             supports http list of files, s3 bucket files, or local files
@@ -135,7 +135,7 @@ class Catalog():
 
         cat1_md = self.hips_metadata
         cat2_md = othercat.hips_metadata
-        
+
         hp_xmatch_map = util.map_catalog_hips(cat1_md['hips'], self.output_dir,
                 cat2_md['hips'], othercat.output_dir)
 
@@ -144,7 +144,7 @@ class Catalog():
         if debug:
             hp_xmatch_map = hp_xmatch_map[:5]
             print('DEBUGGING ONLY TAKING 5')
-        
+
         if client:
             futures = client.map(
                 du._cross_match2,
@@ -154,10 +154,10 @@ class Catalog():
                 c1_cols=c1_cols,
                 c2_cols=c2_cols,
                 n_neighbors=n_neighbors,
-                dthresh=dthresh 
+                dthresh=dthresh
             )
             progress(futures)
-            
+
             self.result = dd.concat([x.result() for x in futures])
 
         else:
@@ -185,7 +185,7 @@ class Catalog():
         #Gather the metadata from the already partitioned catalogs
         cat1_md = self.hips_metadata
         cat2_md = othercat.hips_metadata
-        
+
         #use the metadata to calculate the hipscat1 x hipscat2 map
         # this function finds the appropriate catalog parquet files to execute the crossmatches
         # returns a [
@@ -198,35 +198,35 @@ class Catalog():
             print(len(hc_xmatch_map))
             hc_xmatch_map = hc_xmatch_map[:5]
             print('DEBUGGING ONLY TAKING 5')
-        
+
         #This instantiates the dask.dataframe from the hc
-        #  just a table with columns = [catalog1_file_path, catalog2_file_path, other_xm_metadata...] 
+        #  just a table with columns = [catalog1_file_path, catalog2_file_path, other_xm_metadata...]
         matchcats_dict =util.xmatchmap_dict(hc_xmatch_map)
         # ensure the number of partitions are the number cross-match operations so that memory is managed
         nparts = len(matchcats_dict[list(matchcats_dict.keys())[0]])
 
         matchcats_df = dd.from_pandas(
             pd.DataFrame(
-                matchcats_dict, 
+                matchcats_dict,
                 columns = list(matchcats_dict.keys())
-            ).reset_index(drop=True), 
+            ).reset_index(drop=True),
             npartitions=nparts
         )
 
         #estanblish the return columns for the returned dataframe's metadata
-        # dask.dataframe.map_partitions() requires the metadata of the resulting 
+        # dask.dataframe.map_partitions() requires the metadata of the resulting
         # dataframe to be defined prior to execution. The column names and datatypes
         # are defined here and passed in the 'meta' variable
         c1_cols = util.catalog_columns_selector_withdtype(cat1_md, c1_cols)
         c2_cols = util.catalog_columns_selector_withdtype(cat2_md, c2_cols)
 
-        #populate metadata with column information 
+        #populate metadata with column information
         # plus variables from the cross_match calculation
         meta = {}
         meta.update(c1_cols)
         meta.update(c2_cols)
         meta.update({
-            'hips_k':'i8', 
+            'hips_k':'i8',
             'hips_pix':'i8',
             '_DIST':'f8'
         })
@@ -234,14 +234,14 @@ class Catalog():
         #call the xmatch_from_daskdf function.
         self.result = matchcats_df.map_partitions(
             du.xmatch_from_daskdf,
-            cat1_md, cat2_md, 
+            cat1_md, cat2_md,
             c1_cols.keys(), c2_cols.keys(),
             n_neighbors=n_neighbors,
             dthresh=dthresh,
             meta = meta
         )
         return self.result
-    
+
 
 if __name__ == '__main__':
     import time
