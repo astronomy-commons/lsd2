@@ -108,10 +108,9 @@ def get_edge(dk, pix, edge):
     # pixel pix, the edge pixels are readily computed by left-shifting pix by 2*dk places,
     # and summing (== or-ing) it with the suffix array.
     #
-
-    try:
+    if (edge, dk) in _suffixes.keys():
         a = _suffixes[(edge, dk)]
-    except KeyError:
+    else:
         # generate and cache the suffix:
 
         # generate all combinations of i,j,k,... suffixes for the requested edge

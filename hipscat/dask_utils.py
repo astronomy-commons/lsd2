@@ -205,8 +205,8 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
     resolution = hp.nside2resol(2**k, arcmin=True) / 60.
     resolution_and_thresh = resolution + 0.1
     scale = (resolution_and_thresh**2) / (resolution**2)
-    scale_matrix = np.array([scale, 0],
-                            [0, scale])
+    scale_matrix = np.array([[scale, 0],
+                            [0, scale]])
 
     # create the rough boundaries of the threshold bounding region.
     # TODO: create a scaling affine transform that will scale this region to cover the
