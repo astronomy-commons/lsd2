@@ -115,7 +115,7 @@ def get_edge(dk, pix, edge):
         # generate and cache the suffix:
 
         # generate all combinations of i,j,k,... suffixes for the requested edge
-        # See https://stackoverflow.com/a/35608701 if you're confused.
+        # See https://stackoverflow.com/a/35608701
         a = np.array(np.meshgrid(*[_edge_vectors[edge]]*dk)).T.reshape(-1, dk)
         # bit-shift each suffix by the required number of bits
         a <<= np.arange(2*(dk-1),-2,-2)
