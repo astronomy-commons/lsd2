@@ -47,7 +47,7 @@ class Partitioner():
 
         # the order at which we will preform the margin pixel assignments
         # needs to be equal to or greater than the highest order of partition.
-        self.highest_k = 7
+        self.highest_k = order_k + 1
 
         assert self.fmt in ['csv', 'parquet', 'csv.gz', 'fits'], \
             'Source catalog file format not implemented. csv, csv.gz, fits, and parquet\
