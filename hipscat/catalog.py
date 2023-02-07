@@ -88,12 +88,12 @@ class Catalog():
         return self.lsddf
 
 
-    def hips_import(self, file_source='/data2/epyc/data/gaia_edr3_csv/', 
-        fmt='csv.gz', debug=False, verbose=True, limit=None, threshold=1_000_000, 
+    def hips_import(self, file_source='/data2/epyc/data/gaia_edr3_csv/',
+        fmt='csv.gz', debug=False, verbose=True, limit=None, threshold=1_000_000,
         ra_kw='ra', dec_kw='dec', id_kw='source_id', client=None):
 
         '''
-            ingests a list of source catalog files and partitions them out based 
+            ingests a list of source catalog files and partitions them out based
             on hierarchical partitioning of size on healpix map
 
             supports http list of files, s3 bucket files, or local files
@@ -233,7 +233,7 @@ class Catalog():
         #Gather the metadata from the already partitioned catalogs
         cat1_md = self.hips_metadata
         cat2_md = othercat.hips_metadata
-        
+
         #use the metadata to calculate the hipscat1 x hipscat2 map
         # this function finds the appropriate catalog parquet files to execute the crossmatches
         # returns a [
@@ -246,18 +246,18 @@ class Catalog():
         if debug:
             hc_xmatch_map = hc_xmatch_map[:5]
             print('DEBUGGING ONLY TAKING 5')
-        
+
         #This instantiates the dask.dataframe from the hc
-        #  just a table with columns = [catalog1_file_path, catalog2_file_path, other_xm_metadata...] 
+        #  just a table with columns = [catalog1_file_path, catalog2_file_path, other_xm_metadata...]
         matchcats_dict =util.xmatchmap_dict(hc_xmatch_map)
         # ensure the number of partitions are the number cross-match operations so that memory is managed
         nparts = len(matchcats_dict[list(matchcats_dict.keys())[0]])
 
         matchcats_df = dd.from_pandas(
             pd.DataFrame(
-                matchcats_dict, 
+                matchcats_dict,
                 columns = list(matchcats_dict.keys())
-            ).reset_index(drop=True), 
+            ).reset_index(drop=True),
             npartitions=nparts
         )
 
@@ -320,7 +320,130 @@ class Catalog():
             meta = meta
         )
         return self.result
-    
+
+
+    def visualize_sources(self, figsize=(5,5)):
+        '''
+        Returns hp.mollview() of the high order pixel map that is 
+        calculated during the partitioning routine. 
+        
+        inputs:
+            figsize=Tuple(x,y) for the figure size
+
+        Visualize from notebook    
+        '''
+        #Look for the output_dir created from 
+        if self.output_dir is None:
+            raise FileNotFoundError('hipscat output_dir not found. hips_import() needs to be (re-) ran')
+
+        outputdir_files = os.listdir(self.output_dir)
+        maps = [x for x in outputdir_files if f'{self.catname}_order' in x and 'hpmap.fits' in x]
+        
+        if len(maps) == 0:
+            raise FileNotFoundError('map not found. hips_import() needs to be (re-) ran')
+
+        mapFn = os.path.join(self.output_dir, maps[0])
+        img = hp.read_map(mapFn)
+        fig = plt.figure(figsize=figsize)
+        return hp.mollview(np.log10(img+1), fig=fig, title=f'{self.catname}: {img.sum():,.0f} sources', nest=True)
+
+
+    def visualize_partitions(self, figsize=(5,5)):
+        '''
+        Returns hp.mollview() of the partitioning structure that is 
+        calculated during the partitioning routine. 
+        
+        inputs: 
+            figsize=Tuple(x,y) for the figure size
+
+        Visualize from notebook
+        '''
+        assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
+
+        catalog_hips = self.hips_metadata["hips"]
+        k = max([int(x) for x in catalog_hips.keys()])
+        npix = hp.order2npix(k)
+        orders = np.full(npix, -1)
+        idx = np.arange(npix)
+        c_orders = [int(x) for x in catalog_hips.keys()]
+        c_orders.sort()
+        
+        for o in c_orders:
+            k2o = 4**(k-o)
+            pixs = catalog_hips[str(o)]
+            pixk = idx.reshape(-1, k2o)[pixs].flatten()
+            orders[pixk] = o
+        
+        fig = plt.figure(figsize=figsize)
+        return hp.mollview(orders, fig=fig, max=k, title=f'{self.catname} partitions', nest=True)
+            
+        
+    def visualize_cone_search(self, ra, dec, radius, figsize=(5,5)):
+        '''
+        Returns hp.mollview() of a cone-search 
+        
+        inputs: 
+            ra=float, Right Ascension in decimal degrees
+            dec=float, Declination in decimal degrees
+            radius=float, Radius of cone in degrees
+            figsize=Tuple(x,y), for the figure size
+
+        Visualize from notebook
+        '''
+        assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
+        assert isinstance(ra, (int, float)), f'ra must be a number'
+        assert isinstance(dec, (int, float)), f'dec must be a number'
+        assert isinstance(radius, (int, float)), f'radius must be a number'
+
+        highest_order = 10
+        nside = hp.order2nside(highest_order)
+        vec = hp.ang2vec(ra, dec, lonlat=True)
+        rad = np.radians(radius)
+        pixels_to_query = hp.query_disc(nside, vec, rad, nest=True)
+
+        #Look for the output_dir created from 
+        if self.output_dir is None:
+            raise FileNotFoundError('hipscat output_dir not found. hips_import() needs to be (re-) ran')
+
+        #look for the pixel map fits file
+        outputdir_files = os.listdir(self.output_dir)
+        maps = [x for x in outputdir_files if f'{self.catname}_order' in x and 'hpmap.fits' in x]
+        if len(maps) == 0:
+            raise FileNotFoundError('map not found. hips_import() needs to be (re-) ran')
+
+        #grab the first one in the list
+        map0 = maps[0]
+        mapFn = os.path.join(self.output_dir, map0)
+
+        #grab the required parameters for hp.query(disc)
+        highest_order = int(mapFn.split('order')[1].split('_')[0])
+        nside = hp.order2nside(highest_order)
+        vec = hp.ang2vec(ra, dec, lonlat=True)
+        rad = np.radians(radius)
+        pixels_to_query = hp.query_disc(nside, vec, rad, nest=True)
+
+        img = hp.read_map(mapFn)
+        maxN = max(np.log10(img+1))+1
+
+        #plot pencil beam. Maybe change the maxN to a value that will 
+        #   never occur in np.log10(img+1).. maybe a negative number
+        img[pixels_to_query] = maxN
+        fig = plt.figure(figsize=figsize)
+        return hp.mollview(np.log10(img+1), fig=fig, title=f'Cone search of {self.catname}', nest=True)
+
+
+    def visualize_cross_match(self, othercat, figsize=(5,5)):
+        '''
+            Returns hp.mollview of the overlap when crossmatching two catalogs
+
+            inputs:
+                othercat=hipscat.Catalog()
+                figsuze=Tuple(x,y)
+
+        Visualize from notebook
+        '''
+        raise NotImplementedError('catalog.visualize_cross_match() not implemented yet')
+
 
     def visualize_sources(self, figsize=(5,5)):
         '''
