@@ -1,10 +1,17 @@
 #!/usr/bin/env python
 # coding: utf-8
+
+# Let's reuse multi-file parquet reading routines from Dask. The only
+# obstacle is that Dask will sort them by name, which will result in
+# out-of-order partitions (the index won't be monotonically increasing)
+# As a quick-and-dirty fix, we'll monkey-patch the sort function to
+# recognize hipscat structure.
+
 import dask.utils as du
-#try:
-#    _orig_natural_sort_key
-#except NameError:
-_orig_natural_sort_key = du.natural_sort_key
+try:
+    _orig_natural_sort_key
+except NameError:
+    _orig_natural_sort_key = du.natural_sort_key
 
 def hips_or_natural_sort_key(s): #: str) -> list[str | int]:
     import re

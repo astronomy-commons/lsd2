@@ -9,6 +9,7 @@ from dask.distributed import Client, progress
 from matplotlib import pyplot as plt 
 import dask.dataframe as dd
 import pandas as pd
+import warnings
 
 from . import util
 from . import dask_utils as du
@@ -76,6 +77,9 @@ class Catalog():
         assert self.hips_metadata is not None, 'Catalog has not been partitioned!'
         hipscat_dir = os.path.join(self.output_dir, 'Norder*', 'Npix*', 'catalog.parquet')
 
+        #ensure user doesn't pass in empty list
+        columns = columns if (isinstance(columns, list) and len(columns) > 0) else None
+
         self.lsddf = dd.read_parquet(
             hipscat_dir,
             calculate_divisions=True,
@@ -127,8 +131,8 @@ class Catalog():
                 self.partitioner.compute_partitioning_map(max_counts_per_partition=threshold)
                 self.partitioner.write_structure_metadata()
             else:
-                self.partitioner.run(client=client, threshold=threshold)
-
+                self.partitioner.run(client=client)
+                self.__init__(self.catname, location=self.location)
         else:
             print('No files Found!')
 
@@ -143,9 +147,9 @@ class Catalog():
          radius: float, Radius from center that circumvents, must be in degrees
         '''
         assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
-        assert isinstance(ra, (int, float))
-        assert isinstance(dec, (int, float))
-        assert isinstance(radius, (int, float))
+        assert isinstance(ra, (int, float)), f'ra must be a number'
+        assert isinstance(dec, (int, float)), f'dec must be a number'
+        assert isinstance(radius, (int, float)), f'radius must be a number'
         
         #establish metadata for the returning dask.dataframe
         # user can select columns
@@ -156,10 +160,12 @@ class Catalog():
         meta['_DIST'] = []
         
         #utilize the healpy library to find the pixels that exist
-        # within the cone. If user-specified radius is too small
-        # we iterate over increasing orders, until we find
-        # pixels to query at the order.
-        highest_order, pixels_to_query = util.find_pixels_in_disc_at_efficient_order(ra, dec, radius)
+        # within the cone. 
+        vec = hp.ang2vec(ra, dec, lonlat=True)
+        rad = np.radians(radius)
+        highest_order = int(max(self.hips_metadata['hips'].keys()))
+        nside = hp.order2nside(highest_order)
+        pixels_to_query = hp.query_disc(nside, vec, rad, nest=True, inclusive=True)
         
         #query our hips metadata for partitioned pixel catalogs that 
         # lie within the cone
@@ -173,38 +179,39 @@ class Catalog():
                     cone_search_map.append(cat_path)
 
         #only need a catalog once, remove duplicates
-        # and then establish the create the dask.dataframe
-        # that will perform the map_partitions of the cone_search
-        # the only parameter we need in this dataframe is the catalog pathways
+        # and then create the dask.dataframe that will perform 
+        # the map_partitions of the cone_search the only parameter 
+        # we need in this dataframe is the catalog pathways
         cone_search_map = list(set(cone_search_map))
         cone_search_map_dict = {
             'catalog':cone_search_map
         }
 
-        nparts = len(cone_search_map_dict[list(cone_search_map_dict.keys())[0]])
-        if nparts > 0:
-            cone_search_df = dd.from_pandas(
-                pd.DataFrame(
-                    cone_search_map_dict, 
-                    columns=list(cone_search_map_dict.keys())
-                ).reset_index(drop=True), 
-                npartitions=nparts
-            )
-
-            #calculate the sources with the dask partitinoed ufunc
-            result = cone_search_df.map_partitions(
-                du.cone_search_from_daskdf,
-                ra=ra, dec=dec, radius=radius, 
-                c_md=self.hips_metadata, columns=columns,
-                meta=meta
-            )   
-            return result
-        else:
+        #nparts = len(cone_search_map_dict[list(cone_search_map_dict.keys())[0]])
+        nparts = len(cone_search_map)
+        if nparts == 0:
             #No sources in the catalog within the disc
             return dd.from_pandas(meta, npartitions=1)
 
+        cone_search_df = dd.from_pandas(
+            pd.DataFrame(
+                cone_search_map_dict, 
+                columns=list(cone_search_map_dict.keys())
+            ).reset_index(drop=True), 
+            npartitions=nparts
+        )
 
-    def cross_match(self, othercat=None, c1_cols={}, c2_cols={}, n_neighbors=1, dthresh=0.01, debug=False):
+        #calculate the sources with the dask partitinoed ufunc
+        result = cone_search_df.map_partitions(
+            du.cone_search_from_daskdf,
+            ra=ra, dec=dec, radius=radius, 
+            c_md=self.hips_metadata, columns=columns,
+            meta=meta
+        )   
+        return result
+
+
+    def cross_match(self, othercat=None, c1_cols=[], c2_cols=[], n_neighbors=1, dthresh=0.01, debug=False):
         '''
             Parameters:
                 othercat- other hipscat catalog
@@ -219,7 +226,7 @@ class Catalog():
 
         assert othercat is not None, 'Must specify another catalog to crossmatch with.'
         assert isinstance(othercat, Catalog), 'The other catalog must be an instance of hipscat.Catalog.'
-
+        assert self.catname != othercat.catname, "Cannot cross_match catalog with self"
         assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
         assert othercat.hips_metadata is not None, f'{othercat} hipscat metadata not found. {othercat}.hips_import() needs to be (re-) ran'
 
@@ -254,30 +261,60 @@ class Catalog():
             npartitions=nparts
         )
 
-        #establish the return columns for the returned dataframe's metadata
+        #establish the return columns for the returned xmatch'd dataframe's metadata
         # dask.dataframe.map_partitions() requires the metadata of the resulting 
-        # dataframe to be defined prior to execution. The column names and datatypes
-        # are defined here and passed in the 'meta' variable
-        c1_cols = util.catalog_columns_selector_withdtype(cat1_md, c1_cols)
-        c2_cols = util.catalog_columns_selector_withdtype(cat2_md, c2_cols)
-        c2_cols = util.rename_meta_dict(c1_cols, c2_cols)
+        # dataframe to be defined prior to execution. The column names are defined here 
+        # renamed based on catalog_name, and passed into the 'meta' variable
 
-        #populate metadata with column information 
-        # plus variables from the cross_match calculation
-        meta = {}
-        meta.update(c1_cols)
-        meta.update(c2_cols)
-        meta.update({
-            'hips_k':'i8', 
-            'hips_pix':'i8',
-            '_DIST':'f8'
-        })
+        # lazy load the dataframes to 'sniff' the column names. Doesn't load any data
+        # The util.cater_input_cols function just ensures the ra, dec, and id columns aren't forgotten
+        # if the user doesn't specify columns, it will grab the whole dataframe
+        c1_ddf = self.load(columns=util.cater_input_cols(c1_cols, cat1_md))
+        c2_ddf = othercat.load(columns=util.cater_input_cols(c2_cols, cat2_md))
+
+        # grab the meta data for each catalogs
+        c1_meta = c1_ddf._meta
+        c2_meta = c2_ddf._meta
+
+        #rename the meta-data with the catalog name prefixes
+        c1_meta_prefixed = util.frame_prefix_all_cols(c1_meta, self.catname)
+        c2_meta_prefixed = util.frame_prefix_all_cols(c2_meta, othercat.catname)
+
+        #construct the dictionary that the cross_match routine utilizes to 
+        # - read the specified columns from the parquet file 'c1/2_cols_original'
+        # - rename the columns with the prefix names for the return dataframe 'c1/2_cols_prefixed'
+        # - maintain the prefixed kws for ra/dec/id so that the cross_match routine can 
+        #       appropriately read them from the dataframes when actually cross_matching
+        all_column_dict = {
+            'c1_cols_original' : list(c1_meta.columns),
+            'c1_cols_prefixed' : list(c1_meta_prefixed.columns),
+            'c2_cols_original' : list(c2_meta.columns),
+            'c2_cols_prefixed' : list(c2_meta_prefixed.columns),
+            'c1_kws_prefixed'  : util.catalog_prefix_kws(cat1_md, self.catname),    #rename the ra,dec,id kws with 
+            'c2_kws_prefixed'  : util.catalog_prefix_kws(cat2_md, othercat.catname) # the appropriate prefixes
+        }
+        del c1_ddf, c2_ddf
+
+        # TODO: Do we want to allow same catalog crossmatching, requires _2 suffix?
+        # c2_cols = util.rename_meta_cols(c1_cols, c2_cols)
+
+        #create the empty metadata dataframe along with our xmatch columns
+        meta = pd.concat([c1_meta_prefixed, c2_meta_prefixed])
+        meta['hips_k'] = []
+        meta['hips_pix'] = []
+        meta['_DIST'] = []
+
+        #let the user know they are about to get huge dataframes
+        if len(meta.columns) > 50:
+            warnings.warn('The number of columns in the returned dataframe is greater than 50. \
+                This could potentially excede the expected computation time. \
+                It is highly suggested to limit the return columns for the cross_match with the c1_cols=[...], and c2_cols=[...] parameters'
+            )
 
         #call the xmatch_from_daskdf function.
         self.result = matchcats_df.map_partitions(
             du.xmatch_from_daskdf,
-            cat1_md, cat2_md, 
-            list(c1_cols.keys()), list(c2_cols.keys()),
+            all_column_dict=all_column_dict,
             n_neighbors=n_neighbors,
             dthresh=dthresh,
             meta = meta
@@ -286,49 +323,77 @@ class Catalog():
     
 
     def visualize_sources(self, figsize=(5,5)):
+        '''
+        Returns hp.mollview() of the high order pixel map that is 
+        calculated during the partitioning routine. 
+        
+        inputs:
+            figsize=Tuple(x,y) for the figure size
 
-        if self.output_dir is not None:
-            outputdir_files = os.listdir(self.output_dir)
-            maps = [x for x in outputdir_files if f'{self.catname}_order' in x and 'hpmap.fits' in x]
-            if len(maps):
-                mapFn = os.path.join(self.output_dir, maps[0])
-                img = hp.read_map(mapFn)
-                fig = plt.figure(figsize=figsize)
-                return hp.mollview(np.log10(img+1), fig=fig, title=f'{self.catname}: {img.sum():,.0f} sources', nest=True)
-            else:
-                assert False, 'map not found. hips_import() needs to be (re-) ran'
-        else:
-            assert False, 'hipscat output_dir not found. hips_import() needs to be (re-) ran'
+        Visualize from notebook    
+        '''
+        #Look for the output_dir created from 
+        if self.output_dir is None:
+            raise FileNotFoundError('hipscat output_dir not found. hips_import() needs to be (re-) ran')
+
+        outputdir_files = os.listdir(self.output_dir)
+        maps = [x for x in outputdir_files if f'{self.catname}_order' in x and 'hpmap.fits' in x]
+        
+        if len(maps) == 0:
+            raise FileNotFoundError('map not found. hips_import() needs to be (re-) ran')
+
+        mapFn = os.path.join(self.output_dir, maps[0])
+        img = hp.read_map(mapFn)
+        fig = plt.figure(figsize=figsize)
+        return hp.mollview(np.log10(img+1), fig=fig, title=f'{self.catname}: {img.sum():,.0f} sources', nest=True)
 
 
     def visualize_partitions(self, figsize=(5,5)):
+        '''
+        Returns hp.mollview() of the partitioning structure that is 
+        calculated during the partitioning routine. 
+        
+        inputs: 
+            figsize=Tuple(x,y) for the figure size
 
-        if self.hips_metadata is not None:
-            catalog_hips = self.hips_metadata["hips"]
-            k = max([int(x) for x in catalog_hips.keys()])
-            npix = hp.order2npix(k)
-            orders = np.full(npix, -1)
-            idx = np.arange(npix)
-            c_orders = [int(x) for x in catalog_hips.keys()]
-            c_orders.sort()
-            
-            for o in c_orders:
-                k2o = 4**(k-o)
-                pixs = catalog_hips[str(o)]
-                pixk = idx.reshape(-1, k2o)[pixs].flatten()
-                orders[pixk] = o
-            
-            fig = plt.figure(figsize=figsize)
-            return hp.mollview(orders, fig=fig, max=k, title=f'{self.catname} partitions', nest=True)
-        else:
-            assert False, 'hipscat metadata not found. hips_import() needs to be (re-) ran'
+        Visualize from notebook
+        '''
+        assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
+
+        catalog_hips = self.hips_metadata["hips"]
+        k = max([int(x) for x in catalog_hips.keys()])
+        npix = hp.order2npix(k)
+        orders = np.full(npix, -1)
+        idx = np.arange(npix)
+        c_orders = [int(x) for x in catalog_hips.keys()]
+        c_orders.sort()
+        
+        for o in c_orders:
+            k2o = 4**(k-o)
+            pixs = catalog_hips[str(o)]
+            pixk = idx.reshape(-1, k2o)[pixs].flatten()
+            orders[pixk] = o
+        
+        fig = plt.figure(figsize=figsize)
+        return hp.mollview(orders, fig=fig, max=k, title=f'{self.catname} partitions', nest=True)
             
         
     def visualize_cone_search(self, ra, dec, radius, figsize=(5,5)):
+        '''
+        Returns hp.mollview() of a cone-search 
+        
+        inputs: 
+            ra=float, Right Ascension in decimal degrees
+            dec=float, Declination in decimal degrees
+            radius=float, Radius of cone in degrees
+            figsize=Tuple(x,y), for the figure size
+
+        Visualize from notebook
+        '''
         assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
-        assert isinstance(ra, (int, float))
-        assert isinstance(dec, (int, float))
-        assert isinstance(radius, (int, float))
+        assert isinstance(ra, (int, float)), f'ra must be a number'
+        assert isinstance(dec, (int, float)), f'dec must be a number'
+        assert isinstance(radius, (int, float)), f'radius must be a number'
 
         highest_order = 10
         nside = hp.order2nside(highest_order)
@@ -336,34 +401,48 @@ class Catalog():
         rad = np.radians(radius)
         pixels_to_query = hp.query_disc(nside, vec, rad, nest=True)
 
-        if self.output_dir is not None:
-            outputdir_files = os.listdir(self.output_dir)
-            maps = [x for x in outputdir_files if f'{self.catname}_order' in x and 'hpmap.fits' in x]
-            if len(maps):
-                map0 = maps[0]
-                mapFn = os.path.join(self.output_dir, map0)
-                highest_order = int(mapFn.split('order')[1].split('_')[0])
-                nside = hp.order2nside(highest_order)
-                vec = hp.ang2vec(ra, dec, lonlat=True)
-                rad = np.radians(radius)
-                pixels_to_query = hp.query_disc(nside, vec, rad, nest=True)
+        #Look for the output_dir created from 
+        if self.output_dir is None:
+            raise FileNotFoundError('hipscat output_dir not found. hips_import() needs to be (re-) ran')
 
-                img = hp.read_map(mapFn)
-                maxN = max(np.log10(img+1))+1
-                img[pixels_to_query] = maxN
-                fig = plt.figure(figsize=figsize)
-                return hp.mollview(np.log10(img+1), fig=fig, title=f'Cone search of {self.catname}', nest=True)
-            else:
-                assert False, 'map not found. hips_import() needs to be (re-) ran'
-        else:
-            assert False, 'hipscat output_dir not found. hips_import() needs to be (re-) ran'
-        
+        #look for the pixel map fits file
+        outputdir_files = os.listdir(self.output_dir)
+        maps = [x for x in outputdir_files if f'{self.catname}_order' in x and 'hpmap.fits' in x]
+        if len(maps) == 0:
+            raise FileNotFoundError('map not found. hips_import() needs to be (re-) ran')
+
+        #grab the first one in the list
+        map0 = maps[0]
+        mapFn = os.path.join(self.output_dir, map0)
+
+        #grab the required parameters for hp.query(disc)
+        highest_order = int(mapFn.split('order')[1].split('_')[0])
+        nside = hp.order2nside(highest_order)
+        vec = hp.ang2vec(ra, dec, lonlat=True)
+        rad = np.radians(radius)
+        pixels_to_query = hp.query_disc(nside, vec, rad, nest=True)
+
+        img = hp.read_map(mapFn)
+        maxN = max(np.log10(img+1))+1
+
+        #plot pencil beam. Maybe change the maxN to a value that will 
+        #   never occur in np.log10(img+1).. maybe a negative number
+        img[pixels_to_query] = maxN
+        fig = plt.figure(figsize=figsize)
+        return hp.mollview(np.log10(img+1), fig=fig, title=f'Cone search of {self.catname}', nest=True)
+
 
     def visualize_cross_match(self, othercat, figsize=(5,5)):
         '''
-            visualize the overlap when crossmatching two catalogs
+            Returns hp.mollview of the overlap when crossmatching two catalogs
+
+            inputs:
+                othercat=hipscat.Catalog()
+                figsuze=Tuple(x,y)
+
+        Visualize from notebook
         '''
-        sys.exit('Not implemented error')
+        raise NotImplementedError('catalog.visualize_cross_match() not implemented yet')
 
 
 if __name__ == '__main__':

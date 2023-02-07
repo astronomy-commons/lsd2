@@ -10,12 +10,14 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 from functools import partial
-from dask.distributed import Client, progress
+from dask.distributed import Client, progress, wait
 
-from . import util
-from . import dask_utils as du
-#import util
-#import dask_utils as du
+try:
+    from . import util
+    from . import dask_utils as du
+except ImportError:
+    import util
+    import dask_utils as du
 
 
 class Partitioner():
@@ -193,8 +195,8 @@ class Partitioner():
                                                             # indices of pixels that fall into order-o
                                                             # pixels stored in pixo
                 orders[pixk] = o
-                #if self.verbose:
-                #    print(o, np.count_nonzero(orders == -1), len(pixo))
+                if self.verbose:
+                    print(o, np.count_nonzero(orders == -1), len(pixo))
 
 
         assert not (orders == -1).any()
@@ -391,8 +393,8 @@ class Partitioner():
             dec_kw=self.dec_kw,
             id_kw=self.id_kw
         )
-        r = [x.result() for x in futures]
-        #progress(futures)
+        #r = [x.result() for x in futures]
+        wait(futures)
         self.output_written = True
 
 
@@ -403,6 +405,17 @@ class Partitioner():
         if not self.output_written:
             print('Error: Partitioning map must be computed before reducing')
             return
+
+        #pix_directories = []
+        #orders = list(self.opix.keys())
+        #orders.sort(reverse=True)
+
+        #for k in orders:
+        #    k_dir = f'Norder{k}'
+        #    npixs = self.opix[k]
+        #    for pix in npixs:
+        #        pix_dir = f'Npix{pix}'
+        #        pix_directories.append(os.path.join(self.output_dir, k_dir, pix_dir))
 
         orders = [x for x in os.listdir(self.output_dir) if 'Norder' in x]
         orders.sort(reverse=True)
@@ -420,14 +433,15 @@ class Partitioner():
 
                 pix_directories.append(os.path.join(self.output_dir, k_dir, pix_dir))
 
-        self.hips_structure = hips_structure
         futures = client.map(
             du._map_reduce, pix_directories,
             ra_kw=self.ra_kw,
             dec_kw=self.dec_kw
         )
 
-        r = [x.result() for x in futures]
+        wait(futures)
+        self.hips_structure = hips_structure
+        #r = [x.result() for x in futures]
         #progress(futures)
 
 
@@ -453,21 +467,30 @@ class Partitioner():
             print(dumped_metadata)
 
 
+    def construct_hips_structure(self):
+        assert self.opix is not None, 'bad'
+        self.hips_structure = self.opix
+
+
 if __name__ == '__main__':
     import time
     s = time.time()
     ###
     #urls = glob.glob('/epyc/data/gaia_edr3_csv/*.csv.gz')[:10]
 
-    urls = glob.glob('/epyc/data/sdss_parquet/*.parquet')[:10]
-    imp = Partitioner(catname='sdss', urls=urls, order_k=10, verbose=True, debug=True)
+    #client = Client(local_directory='/epyc/projects3/sam_hipscat/', n_workers=48, threads_per_worker=1)
+    urls = glob.glob('/epyc/data/gaia_edr3_csv/*.csv.gz')
+    imp = Partitioner(catname='gaia_reverse', urls=urls, order_k=10, verbose=True, debug=False, location='/epyc/projects3/sam_hipscat/')
     imp.gather_statistics()
-    hp.mollview(np.log10(imp.img+1), title=f'{imp.img.sum():,.0f} sources', nest=True)
-    plt.show()
+    #hp.mollview(np.log10(imp.img+1), title=f'{imp.img.sum():,.0f} sources', nest=True)
+    #plt.show()
     imp.compute_partitioning_map(max_counts_per_partition=1_000_000)
-    hp.mollview(imp.orders, title=f'partitions', nest=True)
-    plt.show()
+    #hp.mollview(imp.orders, title=f'partitions', nest=True)
+    #plt.show()
 
+    imp.construct_hips_structure()
+    imp.write_structure_metadata()
     ###
+    #client.close()
     e = time.time()
     print('Elapsed time = {}'.format(e-s))

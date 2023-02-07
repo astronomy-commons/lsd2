@@ -64,6 +64,7 @@ def compute_index(ra, dec, order=20):
 
     return idx
 
+
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types """
     def default(self, obj):
@@ -116,12 +117,12 @@ def map_pixel_at_order(pixel, order, _map):
     
     ret = {}
     for o in map_orders:
-        ret[o] = []
-        pixs = _map[str(o)]
+        #ret[o] = []
+        pixs = np.asarray(_map[str(o)])
         if o == order and pixel in pixs:
             #if o is equal to order, and pixel is in the _map[order]
             # pixels. There is a one to one mapping
-            ret[o].append(pixel)
+            ret[o] = np.array([pixel])
             return ret
             
         elif o < order:
@@ -129,18 +130,14 @@ def map_pixel_at_order(pixel, order, _map):
             # we'll need to bitshift the mapping pixel to the order
             # of the catalog we are matching
             upper_pix = pixel >> 2*(order-o)
-            for p in pixs:
-                if p == upper_pix:
-                    ret[o].append(p)
+            ret[o] = pixs[pixs == upper_pix]
                 
         elif o > order:
             #if o is greater than the mapping pixel order
             # we'll need to bitshift the pixels o-order levels down
             # this gives us a single pixel
-            for p in pixs:
-                lower_pix = p >> 2*(o-order)
-                if pixel == lower_pix:
-                    ret[o].append(p)
+            lower_pixs = pixs >> 2*(o-order)
+            ret[o] = pixs[lower_pixs == pixel]
                     
     return ret
 
@@ -289,148 +286,111 @@ def xmatchmap_dict(hp_match_map):
     return data
 
 
-def catalog_columns_selector_withdtype(cat_md, cols):
-    '''
-        Establish the return columns for the dataframe's metadata
-         dask.dataframe.map_partitions() requires the metadata of the resulting 
-         dataframe to be defined prior to execution. The column names and datatypes
-         are defined here and passed in the 'meta' variable
-
-         it expects the ra_kw, dec_kw, and id_kw fields with their respective dtypes
-         if the user want's other columns, it will append them
-
-         TODO: validate user-defined cols fields {key: dtype} 
-    '''
-    expected_cols = {
-        cat_md['ra_kw'] :'f8',
-        cat_md['dec_kw']:'f8',
-        cat_md['id_kw'] :'i8'
-    }
-    if not len(cols):
-        return expected_cols
-    else:
-        for k in expected_cols.keys():
-            if k not in cols.keys():
-                cols[k] = expected_cols[k]
-        return cols
-
-
-def establish_pd_meta(c1_cols, c2_cols):
-    '''
-        the return type from cross_match routine metadata columns
-    '''
-    colnames = []
-    colnames.extend(c1_cols)
-    colnames.extend(c2_cols)
-    colnames.extend(['hips_k', 'hips_pix', '_DIST'])
-    return colnames
-
-
-def rename_meta_dict(c1_cols, c2_cols, suffix='_2'):
+def rename_meta_cols(c1_cols, c2_cols, suffix='_2'):
     '''
         finds columns with the same name and appends
         a suffix to the column name. Should only be applied
         to the c2_cols dictionary
     '''
-    c2keys = list(c2_cols.keys())
-    for c2k in c2keys:
-        if c2k in c1_cols.keys():
-            c2_cols[f'{c2k}{suffix}'] = c2_cols.pop(c2k)
+    for c2c in c2_cols:
+        if c2c in c1_cols:
+            c2c_i = c2_cols.index(c2_cols[c2c])
+            c2_cols[c2c_i] = f'{c2c}{suffix}'
     return c2_cols
 
 
-def frame_rename_cols(df, cols, suffix='_2'):
+def cater_input_cols(cols, cat_md):
     '''
-        renames the columns in a dataframe
-        called from cross_match routine when two catalogs 
-         have the same column names in the return
+    if the user specifies columns in a crossmatch 
+        this ensures they don't forget the ra,dec,and id
+    if they don't specify columns, the read_parquet method
+        will read all columns
     '''
+
     if len(cols):
-        rename_cols = {}
-        for c in cols:
-            if str(c).endswith(suffix):
-                rename_cols[c.split(suffix)[0]] = c
-        if rename_cols:
-            #print(rename_cols == {'ra':'ra_2', 'dec':'dec_2', 'source_id':'source_id_2'})
-            df.rename(columns = rename_cols, inplace = True)
+        expected_cols = [
+            cat_md['ra_kw'],
+            cat_md['dec_kw'],
+            cat_md['id_kw'],
+        ]
         
-        df = df[cols]
+        for ec in expected_cols:
+            if ec not in cols:
+                cols.append(ec)
 
-    return df
+        return cols
+    return None
 
-def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
+
+def frame_prefix_all_cols(df, prefix):
+    '''
+    appends a prefix to all columns in a dataframe
+    '''
+
+    cols = list(df.columns)
+    rename_dict = {}
+    for d in cols:
+        rename_dict[d] = f'{prefix}_{d}'
+    ret = df.rename(rename_dict, axis=1)
+    return ret
+
+
+def catalog_prefix_kws(cat_md, prefix):
+    '''
+    returns prefixed kw dictionary for ra, dec, and id
+     from hipscat metadata
+    '''
+
+    prefixed_kw_dict = {
+        'ra_kw':f'{prefix}_{cat_md["ra_kw"]}',
+        'dec_kw':f'{prefix}_{cat_md["dec_kw"]}', 
+        'id_kw':f'{prefix}_{cat_md["id_kw"]}'
+    }
+
+    return prefixed_kw_dict
+
+
+def frame_cull(df, df_md, order, pix):
     '''
         df=pandas.dataframe() from catalog
         df_md=dict{}: metadata for the catalog, need the RA/DEC keywords
         order=int
         pix=int
-        cols=list
-        tocull = bool
         
-        cull the catalog dataframes based on ToCull=True/False
-         and user defined columns
 
         culls based on the smallest comparative order/pixel in the xmatch.
         utlizes the hp.ang2pix() to find all sources at that order,
         then only returns the dataframe containing the sources at the pixel
           -  df['hips_pix'].isin([pix])
-    
-        TODO: select columns in the pd.read_parquet(...) command
     '''
     
-    if tocull:
-        df['hips_pix'] = hp.ang2pix(2**order, 
-            df[df_md['ra_kw']].values, 
-            df[df_md['dec_kw']].values, 
-            lonlat=True, nest=True
-        )
-        df = df.loc[df['hips_pix'].isin([pix])]
+    dfc = df.copy()
+    dfc['hips_pix'] = hp.ang2pix(2**order, 
+        dfc[df_md['ra_kw']].values, 
+        dfc[df_md['dec_kw']].values, 
+        lonlat=True, nest=True
+    )
+    dfc = dfc.loc[dfc['hips_pix'].isin([pix])]
 
-    if len(cols):
-        df = df[cols]
+    del df
+    return dfc
 
-    return df
-
-def find_pixels_in_disc_at_efficient_order(ra, dec, radius):
-    '''
-        finds the adequate order at which to find pixels in conesearch to query
-        if the user searches for a cone with r=0.001,
-        the order/nside must increase to get a result from 
-        hp.query_disc()
-    '''
-
-    vec = hp.ang2vec(ra, dec, lonlat=True)
-    rad = np.radians(radius)
-    pixels_in_disc = []
-    order = 5 #start at a decent order
-    keepon = True
-    while keepon:
-        nside = hp.order2nside(order)
-        pixels_in_disc = hp.query_disc(nside, vec, rad, nest=True)
-        if len(pixels_in_disc) > 1:
-            keepon = False
-        else:
-            order += 1
-
-    return order, pixels_in_disc
-
-
-def cmd_rename_kws(cols, md, suffix='_2'):
-    '''
-        updates the metadata dictionary kw's to reflect same column names
-        if there is a column name with an _2 suffix,
-        then make the metadata kw params reflect that as well
-    '''
-    for c in cols:
-        if str(c).endswith(suffix):
-            cmod = c.split(suffix)[0]
-            if cmod == md['ra_kw']:
-                md['ra_kw'] = c
-            if cmod == md['dec_kw']:
-                md['dec_kw'] = c
-            if cmod == md['id_kw']:
-                md['id_kw'] = c
-    return md
+#def cmd_rename_kws(cols, md, suffix='_2'):
+#    '''
+#        updates the metadata dictionary kw's to reflect same column names
+#        if there is a column name with an _2 suffix,
+#        then make the metadata kw params reflect that as well
+#    '''
+#    for c in cols:
+#        if str(c).endswith(suffix):
+#            cmod = c.split(suffix)[0]
+#            if cmod == md['ra_kw']:
+#                md['ra_kw'] = c
+#            if cmod == md['dec_kw']:
+#                md['dec_kw'] = c
+#            if cmod == md['id_kw']:
+#                md['id_kw'] = c
+#    return md
 
 
 def frame_gnomonic(df, df_md, clon, clat):
