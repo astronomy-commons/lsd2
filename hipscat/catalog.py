@@ -211,15 +211,14 @@ class Catalog():
         return result
 
 
-    def cross_match(self, othercat=None, c1_cols=[], c2_cols=[], n_neighbors=1, dthresh=0.01, debug=False):
+    def cross_match(self, othercat=None, c1_cols=[], c2_cols=[], n_neighbors=1, dthresh=0.01, evaluate_margins=True, debug=False):
         '''
             Parameters:
                 othercat- other hipscat catalog
 
                 user-defined columns to return for dataframe
-                c1_cols- dictionary of {column_name : dtype}
-                c2_cols- dictionary of {column_name : dtype}
-                    dtypes -> f8 - float, i9 - int, etc
+                c1_cols- list of [column_name]
+                c2_cols- list of [column_name]
                 n_neighbors - number of nearest neighbors to find for each souce in catalog1
                 dthresh- distance threshold for nearest neighbors (decimal degrees)
         '''
@@ -311,12 +310,13 @@ class Catalog():
                 It is highly suggested to limit the return columns for the cross_match with the c1_cols=[...], and c2_cols=[...] parameters'
             )
 
-        #call the xmatch_from_daskdf function.
+        #call the xmatch_from_daskdf ufunction.
         self.result = matchcats_df.map_partitions(
             du.xmatch_from_daskdf,
             all_column_dict=all_column_dict,
             n_neighbors=n_neighbors,
             dthresh=dthresh,
+            evaluate_margins=evaluate_margins,
             meta = meta
         )
         return self.result

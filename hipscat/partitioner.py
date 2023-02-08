@@ -15,9 +15,11 @@ from dask.distributed import Client, progress, wait
 try:
     from . import util
     from . import dask_utils as du
+    from . import margin_utils as mu
 except ImportError:
     import util
     import dask_utils as du
+    import margin_utils as mu
 
 
 class Partitioner():
@@ -46,6 +48,10 @@ class Partitioner():
         self.hips_structure = None
         self.output_written = False
         self.threshold = threshold
+
+        # the order at which we will preform the margin pixel assignments
+        # needs to be equal to or greater than the highest order of partition.
+        self.highest_k = order_k + 1
 
         assert self.fmt in ['csv', 'parquet', 'csv.gz', 'fits'], \
             'Source catalog file format not implemented. csv, csv.gz, fits, and parquet\

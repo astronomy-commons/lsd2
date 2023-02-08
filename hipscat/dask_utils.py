@@ -120,9 +120,9 @@ def _map_reduce(output_dir, ra_kw, dec_kw):
     files = os.listdir(os.path.join(output_dir))
 
     #so it doesn't re-concatenate the original catalog, if partition isn't re-ran
-    files = [x for x in files if x not in ['catalog.parquet', 'neighbors.parquet']]
     catalog_files = list(filter(lambda f: len(f) > 15 and f[-15:] == 'catalog.parquet', files))
     neighbor_files = list(filter(lambda f: len(f) > 16 and f[-16:] == 'neighbor.parquet', files))
+
     if len(catalog_files) == 1:
         fn = os.path.join(output_dir, catalog_files[0])
         df = pd.read_parquet(fn, engine='pyarrow')
@@ -135,15 +135,8 @@ def _map_reduce(output_dir, ra_kw, dec_kw):
         df.to_parquet(new_fn)
 
         os.remove(fn)
-        #shutil.copyfile(fn, new_fn)
     else:
-        #for f in catalog_files:
-        #    fn = os.path.join(output_dir, f)
-        #    cat_dfs.append(pd.read_parquet(fn, engine='pyarrow'))
-        #    os.remove(fn)
-
-        #df = pd.concat(dfs, sort=False)
-        df_files = [os.path.join(output_dir, f) for f in files]
+        df_files = [os.path.join(output_dir, f) for f in catalog_files]
         df = pd.concat(
             [pd.read_parquet(parq_file)
             for parq_file in df_files], sort=False
@@ -152,7 +145,6 @@ def _map_reduce(output_dir, ra_kw, dec_kw):
         df.set_index("_ID", inplace=True)
         df.sort_index(inplace=True)
 
-        df = pd.concat(cat_dfs, sort=False)
         output_fn = os.path.join(output_dir, 'catalog.parquet')
         df.to_parquet(output_fn)
         for f in df_files:
@@ -168,18 +160,28 @@ def _map_reduce(output_dir, ra_kw, dec_kw):
     if len(neighbor_files) == 1:
         fn = os.path.join(output_dir, neighbor_files[0])
         df = pd.read_parquet(fn, engine='pyarrow')
-        new_fn = os.path.join(output_dir, 'neighbor.parquet')
-        os.rename(fn, new_fn)
-        #shutil.copyfile(fn, new_fn)
-    else:
-        for f in neighbor_files:
-            fn = os.path.join(output_dir, f)
-            nei_dfs.append(pd.read_parquet(fn, engine='pyarrow'))
-            os.remove(fn)
 
-        df = pd.concat(nei_dfs, sort=False)
+        df["_ID"] = util.compute_index(df[ra_kw].values, df[dec_kw].values, order=14)
+        df.set_index("_ID", inplace=True)
+        df.sort_index(inplace=True)
+
+        new_fn = os.path.join(output_dir, 'neighbor.parquet')
+        df.to_parquet(new_fn)
+        os.remove(fn)
+    else:
+        df_files = [os.path.join(output_dir, f) for f in neighbor_files]
+        df = pd.concat(
+            [pd.read_parquet(parq_file)
+            for parq_file in df_files], sort=False
+        )
+        df["_ID"] = util.compute_index(df[ra_kw].values, df[dec_kw].values, order=14)
+        df.set_index("_ID", inplace=True)
+        df.sort_index(inplace=True)
+
         output_fn = os.path.join(output_dir, 'neighbor.parquet')
         df.to_parquet(output_fn)
+        for f in df_files:
+            os.remove(f)
 
     del df
     del nei_dfs
@@ -218,6 +220,7 @@ def _to_hips(df, hipsPath, base_filename):
 
     # return the number of records written
     return len(df)
+
 
 def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
     # WARNING: only to be used from df2hips(); it's defined out here just for debugging
@@ -268,6 +271,7 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
     # return the number of records written
     return len(df)
 
+
 def _check_margin_bounds(ra, dec, pixel_region):
     res = []
     for i in range(len(ra)):
@@ -275,6 +279,7 @@ def _check_margin_bounds(ra, dec, pixel_region):
         in_bounds = pixel_region.contains(sc)
         res.append(in_bounds)
     return res
+
 
 def _cross_match2(match_cats, c1_md, c2_md, c1_cols=[], c2_cols=[],  n_neighbors=1, dthresh=0.01):
 
@@ -388,7 +393,7 @@ def cone_search_from_daskdf(df, c_md, ra, dec, radius, columns=None):
     return pd.concat(retdfs)
 
 
-def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01):
+def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01, evaluate_margins=True):
     '''
     mapped function for calculating a cross_match between a partitioned dataframe
      with columns [C1, C2, Order, Pix, ToCull1, ToCull2]
@@ -423,6 +428,7 @@ def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01):
     ])
     retdfs = []
 
+    #get the prefixed kw metadata for each catalog
     c1_md = all_column_dict['c1_kws_prefixed']
     c2_md = all_column_dict['c2_kws_prefixed']
 
@@ -430,16 +436,33 @@ def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01):
     #in theory, this should be just one dataframe
     # TODO: ensure that this just one entry in df, and remove the forloop
     for c1, c2, order, pix, tocull1, tocull2 in vals:
+        
+        #implement neighbors into xmatch routine
+        # exists at the same path as c1/c2, 
+        # just has neighbor instead of catalog in the filename
+        n1 = c1.split('catalog.parquet')[0]+'neighbor.parquet'
+        n2 = c1.split('catalog.parquet')[0]+'neighbor.parquet'
 
-        # TODO: enforcemetadata=False
-        # TODO: select columns in the pd.read_parquet(...) command
-        # try/except is here because when enforcemetadata=True, it passes in
-        #  a test-dataframe that has values for filepaths as 'foo'/'bar'
-        #  which breaks opening the pandas.read_parquet()
-        #try:
-        c1_df = pd.read_parquet(c1, columns=all_column_dict['c1_cols_original'], engine='pyarrow')
+        # read the cat1_df while culling appropriate columns
+        cat1_df = pd.read_parquet(c1, columns=all_column_dict['c1_cols_original'], engine='pyarrow')
+        # if a neighbor file exists
+        if (os.path.exists(n1) and evaluate_margins):
+            # read
+            n1_df = pd.read_parquet(n1, columns=all_column_dict['c1_cols_original'], engine='pyarrow')
+            # and concatenate
+            c1_df = pd.concat([cat1_df, n1_df])
+        else:
+            c1_df = cat1_df
+        # rename the columns with appropriate prefixes
         c1_df.columns = all_column_dict['c1_cols_prefixed']
-        c2_df = pd.read_parquet(c2, columns=all_column_dict['c2_cols_original'], engine='pyarrow')
+
+        # same process for cat2... rinse repeat
+        cat2_df = pd.read_parquet(c2, columns=all_column_dict['c2_cols_original'], engine='pyarrow')
+        if (os.path.exists(n2) and evaluate_margins):
+            n2_df = pd.read_parquet(n1, columns=all_column_dict['c2_cols_original'], engine='pyarrow')
+            c2_df = pd.concat([cat2_df, n2_df])
+        else:
+            c2_df = cat2_df
         c2_df.columns = all_column_dict['c2_cols_prefixed']
 
         #if c1 and c2 columnames have the same column names
@@ -450,20 +473,19 @@ def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01):
         #get the center lon/lat of the healpix pixel
         (clon, clat) = hp.pix2ang(hp.order2nside(order), pix, nest=True, lonlat=True)
 
+        # Commenting out since it will effectively negate neighbors -SW 02/07/2023
         #cull the catalog dataframes based on ToCull=True/False
-        # and user defined columns
-        # TODO: select columns in the pd.read_parquet(...) command
-        if tocull1:
-            c1_df = util.frame_cull(
-                df=c1_df, df_md=c1_md,
-                order=order, pix=pix
-            )
+        #if tocull1:
+        #    c1_df = util.frame_cull(
+        #        df=c1_df, df_md=c1_md,
+        #        order=order, pix=pix
+        #    )
 
-        if tocull2:
-            c2_df = util.frame_cull(
-                df=c2_df, df_md=c2_md,
-                order=order, pix=pix
-            )
+        #if tocull2:
+        #    c2_df = util.frame_cull(
+        #        df=c2_df, df_md=c2_md,
+        #        order=order, pix=pix
+        #    )
         
         #Sometimes the c1_df or c2_df contain zero sources 
         # after culling
@@ -521,26 +543,34 @@ if __name__ == '__main__':
     s = time.time()
     #client = Client(n_workers=12, threads_per_worker=1)
 
+    test_xmatch=True
+    test_mapreduce = False
     print('runnin')
-    xdf_dict = {
-        'C1': ['/astro/users/sdwyatt/git-clones/lsd2/examples/output/gaia_exB/Norder4/Npix60/catalog.parquet'],
-        'C2': ['/astro/users/sdwyatt/git-clones/lsd2/examples/output/gaia_exA/Norder4/Npix60/catalog.parquet'],
-        'Order':[4],
-        'Pix':[60], 
-        'ToCull1': [False],
-        'ToCull2': [True]
-    }
-    df = pd.DataFrame(xdf_dict, columns=list(xdf_dict.keys()))
+    if test_xmatch:
+        xdf_dict = {
+            'C1': ['/astro/users/sdwyatt/git-clones/lsd2/examples/output/gaia_exB/Norder4/Npix60/catalog.parquet'],
+            'C2': ['/astro/users/sdwyatt/git-clones/lsd2/examples/output/gaia_exA/Norder4/Npix60/catalog.parquet'],
+            'Order':[4],
+            'Pix':[60], 
+            'ToCull1': [False],
+            'ToCull2': [True]
+        }
+        df = pd.DataFrame(xdf_dict, columns=list(xdf_dict.keys()))
 
-    all_column_dict = {
-        'c1_cols_original':['ra','dec','source_id'],
-        'c1_cols_prefixed':['gaia_exB.ra','gaia_exB.dec','gaia_exB.source_id'],
-        'c2_cols_original':['ra','dec','source_id'],
-        'c2_cols_prefixed':['gaia_exA.ra','gaia_exA.dec','gaia_exA.source_id'],
-        'c1_kws_prefixed':{'ra_kw':'gaia_exB.ra', 'dec_kw':'gaia_exB.dec', 'id_kw':'gaia_exB.source_id'},
-        'c2_kws_prefixed':{'ra_kw':'gaia_exA.ra', 'dec_kw':'gaia_exA.dec', 'id_kw':'gaia_exa.source_id'}
-    }
-    d = xmatch_from_daskdf(df, all_column_dict)
-    print(d)
+        all_column_dict = {
+            'c1_cols_original':['ra','dec','source_id'],
+            'c1_cols_prefixed':['gaia_exB.ra','gaia_exB.dec','gaia_exB.source_id'],
+            'c2_cols_original':['ra','dec','source_id'],
+            'c2_cols_prefixed':['gaia_exA.ra','gaia_exA.dec','gaia_exA.source_id'],
+            'c1_kws_prefixed':{'ra_kw':'gaia_exB.ra', 'dec_kw':'gaia_exB.dec', 'id_kw':'gaia_exB.source_id'},
+            'c2_kws_prefixed':{'ra_kw':'gaia_exA.ra', 'dec_kw':'gaia_exA.dec', 'id_kw':'gaia_exa.source_id'}
+        }
+        d = xmatch_from_daskdf(df, all_column_dict, evaluate_margins=False)
+        print(d.columns)
+
+    if test_mapreduce:
+        ff = '/astro/users/sdwyatt/git-clones/lsd2/examples/output/gaia_exA/Norder4/Npix60'
+        _map_reduce(ff, 'ra', 'dec')
+
     e = time.time()
     print('Elapsed time = {}'.format(e-s))
