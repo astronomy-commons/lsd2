@@ -139,7 +139,7 @@ mygaia_conesearch.compute()
 
 ### Cross-matching (returns comput-able `dask.dataframe`)
 
-Once two catalogs have been imported in this hips format, we can perform a basic prototype for cross-matching. The only caveat is that the user must select the columns (besides ra,dec, and id) that will populate the resulting dataframe from the cross-match.
+Once two catalogs have been imported in this hips format, we can perform a basic prototype for cross-matching (nearest neighbors). The user can select the columns they want from each catalog that will be in the resulting cross-matched dataframe, which will speed up the result and is highly suggested. If the user doesn't specify any columns, it will grab all of them and can increase computation time significantly. 
 
 ```python
 client=Client(n_workers=12, threads_per_worker=1)
@@ -147,8 +147,8 @@ client=Client(n_workers=12, threads_per_worker=1)
 c1 = hc.Catalog('sdss', location='/path/to/hips/catalog/outputdir')
 c2 = hc.Catalog('gaia', location='/path/to/hips/catalog/outputdir')
 
-c1_cols = {}
-c2_cols = {'pmra':'f8', 'pmdec':'f8'}
+c1_cols = []
+c2_cols = ['pmdec', 'pmra']
 
 result = c1.cross_match(
   c2,
@@ -159,17 +159,17 @@ result = c1.cross_match(
 )
 ```
 
-Returns a `dask.dataframe` of the result. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
+Returns a `dask.dataframe` of the result where all columns selected are prefixed by `catalogname_`. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
 
 ```python
 r = result.compute() # performs the cross match computation
 
 r2 = result.assign( #create a new column from the result
-  pm=lambda x: np.sqrt(x.pmra**2 + x.pmdec**2)
+  pm=lambda x: np.sqrt(x.gaia_pmra**2 + x.gaia_pmdec**2)
 ).compute()
 
 r3 = result.assign( #create a new column from the result
-  pm=lambda x: np.sqrt(x.pmra**2 + x.pmdec**2)
+  pm=lambda x: np.sqrt(x.gaia_pmra**2 + x.gaia_pmdec**2)
 ).query( #filter the result 
   'pm > 1.0'
 ).to_parquet( #write the result to a parquet file
