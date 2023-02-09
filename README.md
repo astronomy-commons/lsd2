@@ -95,22 +95,40 @@ catalog.hips_import(
 ```
 
 When this runs, it will create two directories in the specified `location` parameter in the catalog instantiation above: 
-* `cache`: here it will save the source catalogs, and a calculated MOC (multi-order coverage) map based on the source density. From this MOC file, it creates the hierarchical partitioned structure
-* `output`: here it will write the partitioned structure based on the spatial healpix ordering and source density (defined by the `threshold` parameter). The partitioned structure will follow as an example:
+* `cache`: here it will save the source catalogs for faster partitioning if the process needs to be re-ran.
+* `output`: here is where it writes the partitioned structure based on the spatial healpix ordering and source density (defined by the `threshold` parameter) along with neighbor margin sources for accurate cross-matches between hipscats. The partitioned structure will follow as an example:
 ```bash
 /Norder1/
-   -> Npix5/catalog.parquet
-   -> Npix15/catalog.parquet
+   -> Npix5/
+        -> catalog.parquet
+        -> neighbor.parquet
+   -> Npix15/
+        -> catalog.parquet
+        -> neighbor.parquet
 /Norder2/
-   -> Npix54/catalog.parquet
-   -> Npix121/catalog.parquet
-   -> Npix124/catalog.parquet
+   -> Npix54/
+        -> catalog.parquet
+        -> neighbor.parquet
+   -> Npix121/
+        -> catalog.parquet
+        -> neighbor.parquet
+   -> Npix124/
+        -> catalog.parquet
+        -> neighbor.parquet
 ...
 /NorderN/
-   -> [NpixN/catalog.parquet]
+   -> [NpixN/
+        -> catalog.parquet
+        -> neighbor.parquet
+   ]
 ```
 
-It will also create a catalog `metadata.json` that it contains the basic metadata from the partitioning instatiation and running. 
+It will also create two files:
+* a catalog `metadata.json` that contains the basic metadata from the partitioning instatiation and running.
+* a healpix map that saves the spatial source distribution at a high order (default to healpix order 10). 
+
+## Example Usage
+A full tutorial of use-cases are viewable in the `/examples/example_usage.ipynb` notebook.
 
 ### Cone-searching (return a comput-able `dask.dataframe`)
 
@@ -176,4 +194,3 @@ r3 = result.assign( #create a new column from the result
   "path/to/my/parquet/"
 ).compute() 
 ```
-A tutorial of use-cases are viewable in the `/examples/example_usage.ipynb` notebook.
