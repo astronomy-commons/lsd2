@@ -187,9 +187,9 @@ r2 = result.assign( #create a new column from the result
 ).compute()
 
 r3 = result.assign( #create a new column from the result
-  pm=lambda x: np.sqrt(x.gaia_pmra**2 + x.gaia_pmdec**2)
+  pm=lambda x: np.sqrt(x['gaia.pmra']**2 + x['gaia.pmdec']**2)
 ).query( #filter the result 
-  'pm > 1.0'
+  'pm > 1.0' #prefixed column names must be surrounded by backticks. i.e `
 ).to_parquet( #write the result to a parquet file
   "path/to/my/parquet/"
 ).compute() 
