@@ -286,20 +286,7 @@ def xmatchmap_dict(hp_match_map):
     return data
 
 
-def rename_meta_cols(c1_cols, c2_cols, suffix='_2'):
-    '''
-        finds columns with the same name and appends
-        a suffix to the column name. Should only be applied
-        to the c2_cols dictionary
-    '''
-    for c2c in c2_cols:
-        if c2c in c1_cols:
-            c2c_i = c2_cols.index(c2_cols[c2c])
-            c2_cols[c2c_i] = f'{c2c}{suffix}'
-    return c2_cols
-
-
-def cater_input_cols(cols, cat_md):
+def validate_user_input_cols(cols, cat_md):
     '''
     if the user specifies columns in a crossmatch 
         this ensures they don't forget the ra,dec,and id
@@ -322,7 +309,7 @@ def cater_input_cols(cols, cat_md):
     return None
 
 
-def frame_prefix_all_cols(df, prefix):
+def frame_prefix_all_cols(df, prefix, delim='.'):
     '''
     appends a prefix to all columns in a dataframe
     '''
@@ -330,21 +317,21 @@ def frame_prefix_all_cols(df, prefix):
     cols = list(df.columns)
     rename_dict = {}
     for d in cols:
-        rename_dict[d] = f'{prefix}_{d}'
+        rename_dict[d] = f'{prefix}{delim}{d}'
     ret = df.rename(rename_dict, axis=1)
     return ret
 
 
-def catalog_prefix_kws(cat_md, prefix):
+def catalog_prefix_kws(cat_md, prefix, delim='.'):
     '''
     returns prefixed kw dictionary for ra, dec, and id
      from hipscat metadata
     '''
 
     prefixed_kw_dict = {
-        'ra_kw':f'{prefix}_{cat_md["ra_kw"]}',
-        'dec_kw':f'{prefix}_{cat_md["dec_kw"]}', 
-        'id_kw':f'{prefix}_{cat_md["id_kw"]}'
+        'ra_kw':f'{prefix}{delim}{cat_md["ra_kw"]}',
+        'dec_kw':f'{prefix}{delim}{cat_md["dec_kw"]}', 
+        'id_kw':f'{prefix}{delim}{cat_md["id_kw"]}'
     }
 
     return prefixed_kw_dict
@@ -374,23 +361,6 @@ def frame_cull(df, df_md, order, pix):
 
     del df
     return dfc
-
-#def cmd_rename_kws(cols, md, suffix='_2'):
-#    '''
-#        updates the metadata dictionary kw's to reflect same column names
-#        if there is a column name with an _2 suffix,
-#        then make the metadata kw params reflect that as well
-#    '''
-#    for c in cols:
-#        if str(c).endswith(suffix):
-#            cmod = c.split(suffix)[0]
-#            if cmod == md['ra_kw']:
-#                md['ra_kw'] = c
-#            if cmod == md['dec_kw']:
-#                md['dec_kw'] = c
-#            if cmod == md['id_kw']:
-#                md['id_kw'] = c
-#    return md
 
 
 def frame_gnomonic(df, df_md, clon, clat):

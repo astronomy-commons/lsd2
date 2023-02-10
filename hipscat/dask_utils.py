@@ -513,9 +513,9 @@ def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01, evaluat
                 ], axis=1)  # concat the two tables "horizontally" (i.e., join columns, not append rows)
 
             #save the order/pix/and distances for each nearest neighbor
-            out['hips_k'] = order
+            out['hips_k']   = order
             out['hips_pix'] = pix
-            out["_DIST"] =util.gc_dist(
+            out["_DIST"]    = util.gc_dist(
                 out[c1_md['ra_kw']], out[c1_md['dec_kw']],
                 out[c2_md['ra_kw']], out[c2_md['dec_kw']]
             )
@@ -541,36 +541,6 @@ def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01, evaluat
 if __name__ == '__main__':
     import time
     s = time.time()
-    #client = Client(n_workers=12, threads_per_worker=1)
-
-    test_xmatch=True
-    test_mapreduce = False
-    print('runnin')
-    if test_xmatch:
-        xdf_dict = {
-            'C1': ['/astro/users/sdwyatt/git-clones/lsd2/examples/output/gaia_exB/Norder4/Npix60/catalog.parquet'],
-            'C2': ['/astro/users/sdwyatt/git-clones/lsd2/examples/output/gaia_exA/Norder4/Npix60/catalog.parquet'],
-            'Order':[4],
-            'Pix':[60], 
-            'ToCull1': [False],
-            'ToCull2': [True]
-        }
-        df = pd.DataFrame(xdf_dict, columns=list(xdf_dict.keys()))
-
-        all_column_dict = {
-            'c1_cols_original':['ra','dec','source_id'],
-            'c1_cols_prefixed':['gaia_exB.ra','gaia_exB.dec','gaia_exB.source_id'],
-            'c2_cols_original':['ra','dec','source_id'],
-            'c2_cols_prefixed':['gaia_exA.ra','gaia_exA.dec','gaia_exA.source_id'],
-            'c1_kws_prefixed':{'ra_kw':'gaia_exB.ra', 'dec_kw':'gaia_exB.dec', 'id_kw':'gaia_exB.source_id'},
-            'c2_kws_prefixed':{'ra_kw':'gaia_exA.ra', 'dec_kw':'gaia_exA.dec', 'id_kw':'gaia_exa.source_id'}
-        }
-        d = xmatch_from_daskdf(df, all_column_dict, evaluate_margins=False)
-        print(d.columns)
-
-    if test_mapreduce:
-        ff = '/astro/users/sdwyatt/git-clones/lsd2/examples/output/gaia_exA/Norder4/Npix60'
-        _map_reduce(ff, 'ra', 'dec')
-
+    #tests
     e = time.time()
     print('Elapsed time = {}'.format(e-s))

@@ -498,22 +498,6 @@ class Partitioner():
 if __name__ == '__main__':
     import time
     s = time.time()
-    ###
-    #urls = glob.glob('/epyc/data/gaia_edr3_csv/*.csv.gz')[:10]
-
-    #client = Client(local_directory='/epyc/projects3/sam_hipscat/', n_workers=48, threads_per_worker=1)
-    urls = glob.glob('/epyc/data/gaia_edr3_csv/*.csv.gz')
-    imp = Partitioner(catname='gaia_reverse', urls=urls, order_k=10, verbose=True, debug=False, location='/epyc/projects3/sam_hipscat/')
-    imp.gather_statistics()
-    #hp.mollview(np.log10(imp.img+1), title=f'{imp.img.sum():,.0f} sources', nest=True)
-    #plt.show()
-    imp.compute_partitioning_map(max_counts_per_partition=1_000_000)
-    #hp.mollview(imp.orders, title=f'partitions', nest=True)
-    #plt.show()
-
-    imp.construct_hips_structure()
-    imp.write_structure_metadata()
-    ###
-    #client.close()
+    ## Tests
     e = time.time()
     print('Elapsed time = {}'.format(e-s))
