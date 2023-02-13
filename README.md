@@ -177,19 +177,19 @@ result = c1.cross_match(
 )
 ```
 
-Returns a `dask.dataframe` of the result where all columns selected are prefixed by `catalogname_`. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
+Returns a `dask.dataframe` of the result where all cross matched columns selected are prefixed by `catalogname.`. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
 
 ```python
 r = result.compute() # performs the cross match computation
 
 r2 = result.assign( #create a new column from the result
-  pm=lambda x: np.sqrt(x.gaia_pmra**2 + x.gaia_pmdec**2)
+  pm=lambda x: np.sqrt(x['gaia.pmra']**2 + x['gaia.pmdec']**2)
 ).compute()
 
 r3 = result.assign( #create a new column from the result
   pm=lambda x: np.sqrt(x['gaia.pmra']**2 + x['gaia.pmdec']**2)
 ).query( #filter the result 
-  'pm > 1.0' #prefixed column names must be surrounded by backticks. i.e `
+  'pm > 1.0' #prefixed column names must be surrounded by backticks. i.e `gaia.pmdec` > 10
 ).to_parquet( #write the result to a parquet file
   "path/to/my/parquet/"
 ).compute() 
