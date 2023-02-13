@@ -10,23 +10,27 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 from functools import partial
-from dask.distributed import Client, progress
+from dask.distributed import Client, progress, wait
 
-from . import util
-from . import dask_utils as du
-from . import margin_utils as mu
-#import util
-#import dask_utils as du
+try:
+    from . import util
+    from . import dask_utils as du
+    from . import margin_utils as mu
+except ImportError:
+    import util
+    import dask_utils as du
+    import margin_utils as mu
 
 
 class Partitioner():
 
-    def __init__(self, catname, urls=[], fmt='csv', ra_kw='ra', dec_kw='dec',
-        id_kw='source_id',  order_k=5, output='output', cache='cache',
-        verbose=False, debug=False, location=os.getcwd()):
+    def __init__(self, catname, urls=[], fmt='csv', ra_kw='ra', dec_kw='dec', 
+        id_kw='source_id',  order_k=5, output='output', cache='cache', threshold=1_000_000,
+        verbose=False, debug=False, location=os.getcwd(), skiprows=None):
 
         self.catname = catname
         self.urls = urls
+        self.skiprows = skiprows
         self.fmt = fmt
         self.ra_kw = ra_kw
         self.dec_kw = dec_kw
@@ -43,7 +47,7 @@ class Partitioner():
         self.opix = None
         self.hips_structure = None
         self.output_written = False
-        self.threshold = None
+        self.threshold = threshold
 
         # the order at which we will preform the margin pixel assignments
         # needs to be equal to or greater than the highest order of partition.
@@ -73,9 +77,9 @@ class Partitioner():
         os.makedirs(self.output_dir, exist_ok=True)
 
 
-    def run(self, client=None, threshold=1_000_000):
+    def run(self, client=None):
         self.gather_statistics()
-        self.compute_partitioning_map(max_counts_per_partition=threshold)
+        self.compute_partitioning_map(max_counts_per_partition=self.threshold)
         if client:
             self.write_partitioned_structure_wdask(client=client)
             self.structure_map_reduce_wdask(client=client)
@@ -94,7 +98,7 @@ class Partitioner():
         #
         # returns: img (self.order_k healpix map with object counts)
 
-        mapFn = os.path.join(self.cache_dir, f'{self.catname}_order{self.order_k}_hpmap.fits')
+        mapFn = os.path.join(self.output_dir, f'{self.catname}_order{self.order_k}_hpmap.fits')
         if writeread_cache:
             if os.path.exists(mapFn):
                 try:
@@ -114,7 +118,7 @@ class Partitioner():
                 partial(
                     du._gather_statistics_hpix_hist,
                         k=self.order_k, cache_dir=self.cache_dir, fmt=self.fmt,
-                        ra_kw=self.ra_kw, dec_kw=self.dec_kw
+                        ra_kw=self.ra_kw, dec_kw=self.dec_kw, skiprows=self.skiprows,
                     ),
                 sum, split_every=3
             ).compute()
@@ -130,6 +134,9 @@ class Partitioner():
 
 
     def compute_partitioning_map(self, max_counts_per_partition=1_000_000):
+
+        if self.verbose:
+            print(f'Computing paritioning map')
 
         # the output
         orders = np.full(len(self.img), -1) # healpix map of orders
@@ -372,6 +379,9 @@ class Partitioner():
 
 
     def write_partitioned_structure_wdask(self, client):
+        if self.verbose:
+            print(f'Writing partitioned structure')
+
         if not self.opix:
             print('Error: Partitioning map must be computed before writing partitioned structure')
             return
@@ -406,15 +416,29 @@ class Partitioner():
             neighbor_pix=self.neighbor_pix,
             highest_k=self.highest_k
         )
-
-        progress(futures)
+        #r = [x.result() for x in futures]
+        wait(futures)
         self.output_written = True
 
 
     def structure_map_reduce_wdask(self, client):
+        if self.verbose:
+            print(f'Reducing written structure')
+
         if not self.output_written:
             print('Error: Partitioning map must be computed before reducing')
             return
+
+        #pix_directories = []
+        #orders = list(self.opix.keys())
+        #orders.sort(reverse=True)
+
+        #for k in orders:
+        #    k_dir = f'Norder{k}'
+        #    npixs = self.opix[k]
+        #    for pix in npixs:
+        #        pix_dir = f'Npix{pix}'
+        #        pix_directories.append(os.path.join(self.output_dir, k_dir, pix_dir))
 
         orders = [x for x in os.listdir(self.output_dir) if 'Norder' in x]
         orders.sort(reverse=True)
@@ -432,9 +456,16 @@ class Partitioner():
 
                 pix_directories.append(os.path.join(self.output_dir, k_dir, pix_dir))
 
+        futures = client.map(
+            du._map_reduce, pix_directories,
+            ra_kw=self.ra_kw,
+            dec_kw=self.dec_kw
+        )
+
+        wait(futures)
         self.hips_structure = hips_structure
-        futures = client.map(du._map_reduce, pix_directories)
-        progress(futures)
+        #r = [x.result() for x in futures]
+        #progress(futures)
 
 
     def write_structure_metadata(self):
@@ -459,21 +490,14 @@ class Partitioner():
             print(dumped_metadata)
 
 
+    def construct_hips_structure(self):
+        assert self.opix is not None, 'bad'
+        self.hips_structure = self.opix
+
+
 if __name__ == '__main__':
     import time
     s = time.time()
-    ###
-    #urls = glob.glob('/epyc/data/gaia_edr3_csv/*.csv.gz')[:10]
-
-    urls = glob.glob('/epyc/data/sdss_parquet/*.parquet')[:10]
-    imp = Partitioner(catname='sdss', urls=urls, order_k=10, verbose=True, debug=True)
-    imp.gather_statistics()
-    hp.mollview(np.log10(imp.img+1), title=f'{imp.img.sum():,.0f} sources', nest=True)
-    plt.show()
-    imp.compute_partitioning_map(max_counts_per_partition=1_000_000)
-    hp.mollview(imp.orders, title=f'partitions', nest=True)
-    plt.show()
-
-    ###
+    ## Tests
     e = time.time()
     print('Elapsed time = {}'.format(e-s))

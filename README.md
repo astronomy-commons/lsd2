@@ -95,26 +95,69 @@ catalog.hips_import(
 ```
 
 When this runs, it will create two directories in the specified `location` parameter in the catalog instantiation above: 
-* `cache`: here it will save the source catalogs, and a calculated MOC (multi-order coverage) map based on the source density. From this MOC file, it creates the hierarchical partitioned structure
-* `output`: here it will write the partitioned structure based on the spatial healpix ordering and source density (defined by the `threshold` parameter). The partitioned structure will follow as an example:
+* `cache`: here it will save the source catalogs for faster partitioning if the process needs to be re-ran.
+* `output`: here is where it writes the partitioned structure based on the spatial healpix ordering and source density (defined by the `threshold` parameter) along with neighbor margin sources for accurate cross-matches between hipscats. The partitioned structure will follow as an example:
 ```bash
 /Norder1/
-   -> Npix5/catalog.parquet
-   -> Npix15/catalog.parquet
+   -> Npix5/
+        -> catalog.parquet
+        -> neighbor.parquet
+   -> Npix15/
+        -> catalog.parquet
+        -> neighbor.parquet
 /Norder2/
-   -> Npix54/catalog.parquet
-   -> Npix121/catalog.parquet
-   -> Npix124/catalog.parquet
+   -> Npix54/
+        -> catalog.parquet
+        -> neighbor.parquet
+   -> Npix121/
+        -> catalog.parquet
+        -> neighbor.parquet
+   -> Npix124/
+        -> catalog.parquet
+        -> neighbor.parquet
 ...
 /NorderN/
-   -> [NpixN/catalog.parquet]
+   -> [NpixN/
+        -> catalog.parquet
+        -> neighbor.parquet
+   ]
 ```
 
-It will also create a `meta_data.json` that it contains the basic metadata from the partitioning instatiation and running. 
+It will also create two files:
+* a catalog `metadata.json` that contains the basic metadata from the partitioning instatiation and running.
+* a healpix map that saves the spatial source distribution at a high order (default to healpix order 10). 
+
+## Example Usage
+A full tutorial of use-cases are viewable in the `/examples/example_usage.ipynb` notebook.
+
+### Cone-searching (return a comput-able `dask.dataframe`)
+
+Perform cone-search on hipscat. Input params:
+* ra - Right Ascension (decimal degrees)
+* dec - Declination (decimal degrees)
+* radius - Radius of disc to search in (decimal degrees)
+* columns - List of columns in catalog to return.
+
+Returns: `dask.dataframe`. 
+* can leverage the dataframe api and further analyze result
+
+```python
+c1 = hc.Catalog('gaia', location='/path/to/hips/catalog/')
+mygaia_conesearch = c1.cone_search(
+  ra=56, 
+  dec=20,
+  radius=10.0,
+  columns=['ra', 'dec', 'source_id', 'pmra', 'pmdec']
+)
+
+#Nothing is executed until you performe the .compute()
+mygaia_conesearch.compute()
+```
+
 
 ### Cross-matching (returns comput-able `dask.dataframe`)
 
-Once two catalogs have been imported in this hips format, we can perform a basic prototype for cross-matching. The only caveat is that the user must select the columns (besides ra,dec, and id) that will populate the resulting dataframe from the cross-match.
+Once two catalogs have been imported in this hips format, we can perform a basic prototype for cross-matching (nearest neighbors). The user can select the columns they want from each catalog that will be in the resulting cross-matched dataframe, which will speed up the result and is highly suggested. If the user doesn't specify any columns, it will grab all of them and can increase computation time significantly. 
 
 ```python
 client=Client(n_workers=12, threads_per_worker=1)
@@ -122,8 +165,8 @@ client=Client(n_workers=12, threads_per_worker=1)
 c1 = hc.Catalog('sdss', location='/path/to/hips/catalog/outputdir')
 c2 = hc.Catalog('gaia', location='/path/to/hips/catalog/outputdir')
 
-c1_cols = {}
-c2_cols = {'pmra':'f8', 'pmdec':'f8'}
+c1_cols = []
+c2_cols = ['pmdec', 'pmra']
 
 result = c1.cross_match(
   c2,
@@ -134,21 +177,20 @@ result = c1.cross_match(
 )
 ```
 
-Returns a `dask.dataframe` of the result. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
+Returns a `dask.dataframe` of the result where all columns selected are prefixed by `catalogname_`. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
 
 ```python
 r = result.compute() # performs the cross match computation
 
 r2 = result.assign( #create a new column from the result
-  pm=lambda x: np.sqrt(x.pmra**2 + x.pmdec**2)
+  pm=lambda x: np.sqrt(x.gaia_pmra**2 + x.gaia_pmdec**2)
 ).compute()
 
 r3 = result.assign( #create a new column from the result
-  pm=lambda x: np.sqrt(x.pmra**2 + x.pmdec**2)
+  pm=lambda x: np.sqrt(x['gaia.pmra']**2 + x['gaia.pmdec']**2)
 ).query( #filter the result 
-  'pm > 1.0'
+  'pm > 1.0' #prefixed column names must be surrounded by backticks. i.e `
 ).to_parquet( #write the result to a parquet file
   "path/to/my/parquet/"
 ).compute() 
 ```
-A list of example use-cases are viewable in the `/examples/hipscat_tests.py` script.

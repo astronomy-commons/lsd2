@@ -1,6 +1,6 @@
 """Catalog instantiations that test import of several known data sets on epyc data server"""
 
-import sys
+import sys, os
 sys.path.insert(0, '../')
 import hipscat as hc
 from dask.distributed import Client
@@ -33,15 +33,33 @@ def download_ztf(client=None):
         ra_kw='ra', dec_kw='dec', id_kw='ps1_objid', verbose=True, threshold=250_000, limit=10, client=client)
 
 
+
+def download_gaia_index(client=None):
+    c = hc.Catalog('gaia_index_test', location='/epyc/projects3/sam_hipscat/')
+    c.hips_import(file_source='/epyc/data/gaia_edr3_csv/', fmt='csv.gz', ra_kw='ra', dec_kw='dec',
+        id_kw='source_id', debug=False, verbose=True, threshold=1_000_000, client=client, limit=10)
+
+
+def download_gaiaA(client=None):
+    c = hc.Catalog('gaia_exA', location='/epyc/projects3/sam_hipscat/')
+    c.hips_import(file_source='/epyc/data/gaia_edr3_csv/', fmt='csv.gz', ra_kw='ra', dec_kw='dec',
+        id_kw='source_id', debug=False, verbose=True, threshold=1_000_000, client=client, limit=10)
+
 def download_ps1(client=None):
     '''
         ask Eric or Collin what are the contents of the ztf files
         objects or time-series
     '''
     c = hc.Catalog('ps1', location='/epyc/projects3/sam_hipscat/')
-    c.partition_from_source(file_source='/epyc/data/ps1_skinny/', fmt='csv.gz', debug=True,
+    c.hips_import(file_source='/epyc/data/ps1_skinny/', fmt='csv.gz', debug=True,
         ra_kw=5, dec_kw=6, id_kw=0, verbose=True, threshold=250_000, limit=10, client=client)
 
+
+def download_4tract(client=None):
+
+    c = hc.Catalog('fourtract', location='/epyc/projects3/sam_hipscat/')
+    c.hips_import(file_source=os.getcwd(), fmt='parquet', debug=False,
+        ra_kw='ra', dec_kw='dec', id_kw='ps1_objid', verbose=True, threshold=1_000_000, limit=10, client=client)
 
 def xmatch_distributed(client=None):
     import numpy as np
@@ -104,11 +122,11 @@ if __name__ == '__main__':
     import time
     import gc
     #gc.set_debug(gc.DEBUG_LEAK)
-    client = Client(local_directory='/epyc/projects3/sam_hipscat/', n_workers=48, threads_per_worker=2)
+    client = Client(local_directory='/epyc/projects3/sam_hipscat/', n_workers=12, threads_per_worker=1)
     #client=None
     s = time.time()
     #download_sdss(client=client)
-    xmatch_dataframe()
+    download_gaiaA(client=client)
     e = time.time()
     print(f'Elapsed Time: {e-s}')
     #client.close()

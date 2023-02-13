@@ -7,6 +7,64 @@ import os
 from bs4 import BeautifulSoup, SoupStrainer
 
 
+def compute_index(ra, dec, order=20):
+    # the 64-bit index, viewed as a bit array, consists of two parts:
+    #
+    #    idx = |(pix)|(rank)|
+    #
+    # where pix is the healpix nest-scheme index of for given order,
+    # and rank is a monotonically increasing integer for all objects
+    # with the same value of pix.
+
+    # compute the healpix pix-index of each object
+    pix = hp.ang2pix(2**order, ra, dec, nest=True, lonlat=True)
+
+    # shift to higher bits of idx
+    bits=4 + 2*order
+    idx = pix.astype(np.uint64) << (64-bits)
+
+    # sort
+    orig_idx = np.arange(len(idx))
+    sorted_idx = np.lexsort((dec, ra, idx))
+    idx, ra, dec, orig_idx = idx[sorted_idx], ra[sorted_idx], dec[sorted_idx], orig_idx[sorted_idx]
+
+    # compute the rank for each unique value of idx (== bitshifted pix, at this point)
+    # the goal: given values of idx such as:
+    #   1000, 1000, 1000, 2000, 2000, 3000, 5000, 5000, 5000, 5000, ...
+    # compute a unique array such as:
+    #   1000, 1001, 1002, 2000, 2001, 3000, 5000, 5001, 5002, 5003, ...
+    # that is for the subset of nobj objects with the same pix, add
+    # to the index an range [0..nobj)
+    #
+    # how this works:
+    # * x are the indices of the first appearance of a new pix value. In the example above,
+    # it would be equal to [0, 3, 5, 6, ...]. But note that this is also the total number
+    # of entries before the next unique value (e.g. 5 above means there were 5 elements in
+    # idx -- 1000, 1000, 1000, 2000, 2000 -- before the third unique value of idx -- 3000)
+    # * i are the indices of each unique value of idx, starting with 0 for the first one
+    # in the example above, i = [0, 0, 0, 1, 1, 2, 3, 3, 3, 3]
+    # * we need construct an array such as [0, 1, 2, 0, 1, 0, 0, 1, 2, 3, ...], i.e.
+    # a one that resets every time the value of idx changes. If we can construct this, we
+    # can add this array to idx and achieve our objective.
+    # * the way to do it: start with a monotonously increasing array
+    #  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...] and subtract an array that looks like this:
+    #  [0, 0, 0, 3, 3, 5, 6, 7, 7, 7, ...]. This is an array that at each location has
+    #  the index where that location's pix value appeared for the first time. It's easy
+    #  to confirm that this is simply x[i].
+    #
+    # And this is what the following four lines implement.
+    _, x, i = np.unique(idx, return_inverse=True, return_index=True)
+    x = x.astype(np.uint64)
+    ii = np.arange(len(i), dtype=np.uint64)
+    di = ii - x[i]
+    idx += di
+
+    # remap back to the old sort order
+    idx = idx[orig_idx]
+
+    return idx
+
+
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types """
     def default(self, obj):
@@ -59,12 +117,12 @@ def map_pixel_at_order(pixel, order, _map):
     
     ret = {}
     for o in map_orders:
-        ret[o] = []
-        pixs = _map[str(o)]
+        #ret[o] = []
+        pixs = np.asarray(_map[str(o)])
         if o == order and pixel in pixs:
             #if o is equal to order, and pixel is in the _map[order]
             # pixels. There is a one to one mapping
-            ret[o].append(pixel)
+            ret[o] = np.array([pixel])
             return ret
             
         elif o < order:
@@ -72,18 +130,14 @@ def map_pixel_at_order(pixel, order, _map):
             # we'll need to bitshift the mapping pixel to the order
             # of the catalog we are matching
             upper_pix = pixel >> 2*(order-o)
-            for p in pixs:
-                if p == upper_pix:
-                    ret[o].append(p)
+            ret[o] = pixs[pixs == upper_pix]
                 
         elif o > order:
             #if o is greater than the mapping pixel order
             # we'll need to bitshift the pixels o-order levels down
             # this gives us a single pixel
-            for p in pixs:
-                lower_pix = p >> 2*(o-order)
-                if pixel == lower_pix:
-                    ret[o].append(p)
+            lower_pixs = pixs >> 2*(o-order)
+            ret[o] = pixs[lower_pixs == pixel]
                     
     return ret
 
@@ -116,7 +170,9 @@ def map_catalog_hips(cat1_hips, cat1_outputdir, cat2_hips, cat2_outputdir, debug
                                                'catalog.parquet')
                     c2_cat_path = os.path.join(cat2_outputdir, f'Norder{mo}', f'Npix{mp}',
                                                'catalog.parquet')
-                    ret.append([c1_cat_path, c2_cat_path])
+                    res = [c1_cat_path, c2_cat_path]
+                    if res not in ret:
+                        ret.append([c1_cat_path, c2_cat_path])
                     
                     if debug:
                         print(f'C1 {o}:{p} --> C2 {mo}:{mp}')
@@ -151,8 +207,8 @@ def gnomonic(lon, lat, clon, clat):
 def gc_dist(lon1, lat1, lon2, lat2):
     '''
         function that calculates the distance between two points
-            p1 (lon1, lat1)
-            p2 (lon2, lat2)
+            p1 (lon1, lat1) or (ra1, dec1)
+            p2 (lon2, lat2) or (ra2, dec2)
 
             can be np.array()
             returns np.array()
@@ -230,88 +286,87 @@ def xmatchmap_dict(hp_match_map):
     return data
 
 
-def catalog_columns_selector_withdtype(cat_md, cols):
+def validate_user_input_cols(cols, cat_md):
     '''
-        Establish the return columns for the dataframe's metadata
-         dask.dataframe.map_partitions() requires the metadata of the resulting 
-         dataframe to be defined prior to execution. The column names and datatypes
-         are defined here and passed in the 'meta' variable
-
-         it expects the ra_kw, dec_kw, and id_kw fields with their respective dtypes
-         if the user want's other columns, it will append them
-
-         TODO: validate user-defined cols fields {key: dtype} 
+    if the user specifies columns in a crossmatch 
+        this ensures they don't forget the ra,dec,and id
+    if they don't specify columns, the read_parquet method
+        will read all columns
     '''
-    expected_cols = {
-        cat_md['ra_kw'] :'f8',
-        cat_md['dec_kw']:'f8',
-        cat_md['id_kw'] :'i8'
-    }
-    if not len(cols):
-        return expected_cols
-    else:
-        for k in expected_cols.keys():
-            if k not in cols.keys():
-                cols[k] = expected_cols[k]
+
+    if len(cols):
+        expected_cols = [
+            cat_md['ra_kw'],
+            cat_md['dec_kw'],
+            cat_md['id_kw'],
+        ]
+        
+        for ec in expected_cols:
+            if ec not in cols:
+                cols.append(ec)
+
         return cols
+    return None
 
 
-def establish_pd_meta(c1_cols, c2_cols):
-    colnames = []
-    colnames.extend(c1_cols)
-    colnames.extend(c2_cols)
-    colnames.extend(['hips_k', 'hips_pix', '_DIST'])
-    return colnames
+def frame_prefix_all_cols(df, prefix, delim='.'):
+    '''
+    appends a prefix to all columns in a dataframe
+    '''
+
+    cols = list(df.columns)
+    rename_dict = {}
+    for d in cols:
+        rename_dict[d] = f'{prefix}{delim}{d}'
+    ret = df.rename(rename_dict, axis=1)
+    return ret
 
 
-def frame_cull(df, df_md, order, pix, cols=[], tocull=True):
+def catalog_prefix_kws(cat_md, prefix, delim='.'):
+    '''
+    returns prefixed kw dictionary for ra, dec, and id
+     from hipscat metadata
+    '''
+
+    prefixed_kw_dict = {
+        'ra_kw':f'{prefix}{delim}{cat_md["ra_kw"]}',
+        'dec_kw':f'{prefix}{delim}{cat_md["dec_kw"]}', 
+        'id_kw':f'{prefix}{delim}{cat_md["id_kw"]}'
+    }
+
+    return prefixed_kw_dict
+
+
+def frame_cull(df, df_md, order, pix):
     '''
         df=pandas.dataframe() from catalog
         df_md=dict{}: metadata for the catalog, need the RA/DEC keywords
         order=int
         pix=int
-        cols=list
-        tocull = bool
         
-        cull the catalog dataframes based on ToCull=True/False
-         and user defined columns
 
         culls based on the smallest comparative order/pixel in the xmatch.
         utlizes the hp.ang2pix() to find all sources at that order,
         then only returns the dataframe containing the sources at the pixel
           -  df['hips_pix'].isin([pix])
-    
-        TODO: select columns in the pd.read_parquet(...) command
     '''
-
-    if tocull:
-        df['hips_pix'] = hp.ang2pix(2**order, 
-            df[df_md['ra_kw']].values, 
-            df[df_md['dec_kw']].values, 
-            lonlat=True, nest=True
-        )
-        df = df.loc[df['hips_pix'].isin([pix])]
     
-    #user specifies which columns to return
-    if len(cols):
-        #ensure user doesn't cull the ra,dec,and id columns
-        expected_cols = [
-            df_md['ra_kw'],
-            df_md['dec_kw'],
-            df_md['id_kw']
-        ]
-        for ec in expected_cols:
-            if ec not in cols:
-                cols.append(ec)
-        df = df[cols]
+    dfc = df.copy()
+    dfc['hips_pix'] = hp.ang2pix(2**order, 
+        dfc[df_md['ra_kw']].values, 
+        dfc[df_md['dec_kw']].values, 
+        lonlat=True, nest=True
+    )
+    dfc = dfc.loc[dfc['hips_pix'].isin([pix])]
 
-    return df
+    del df
+    return dfc
 
 
 def frame_gnomonic(df, df_md, clon, clat):
     '''
-    method taken from lsd1
-        creates a list of gnomonic distances for each source in the dataframe
+        method taken from lsd1:
+        creates a np.array of gnomonic distances for each source in the dataframe
         from the center of the ordered pixel. These values are passed into 
         the kdtree NN query during the xmach routine.
     '''
