@@ -52,6 +52,7 @@ class Partitioner():
         # the order at which we will preform the margin pixel assignments
         # needs to be equal to or greater than the highest order of partition.
         self.highest_k = order_k + 1
+        self.margin_threshold = 0.1
 
         assert self.fmt in ['csv', 'parquet', 'csv.gz', 'fits'], \
             'Source catalog file format not implemented. csv, csv.gz, fits, and parquet\
@@ -404,6 +405,10 @@ class Partitioner():
             base_filename = os.path.basename(url).split('.')[0]
             pfiles.append(os.path.join(self.cache_dir, base_filename + '.parquet'))
 
+        h_k_resolution = hp.nside2resol(2**self.highest_k, arcmin=True) / 60.
+        if h_k_resolution < self.margin_threshold:
+            print("WARNING: highest_k pixel resolution is lower than margin_threshold. This may result in less data being included in neighbors.parquet files.")
+        
         futures = client.map(
             du._write_partition_structure, pfiles,
             cache_dir=self.cache_dir,
@@ -414,7 +419,8 @@ class Partitioner():
             dec_kw=self.dec_kw,
             id_kw=self.id_kw,
             neighbor_pix=self.neighbor_pix,
-            highest_k=self.highest_k
+            highest_k=self.highest_k,
+            margin_threshold=self.margin_threshold
         )
         #r = [x.result() for x in futures]
         wait(futures)

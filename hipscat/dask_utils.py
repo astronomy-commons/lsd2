@@ -14,6 +14,7 @@ import dask
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from regions import PixCoord, PolygonSkyRegion, PolygonPixelRegion
+import astropy.wcs as wcs
 from functools import partial
 from dask.distributed import Client, progress
 from dask.delayed import delayed
@@ -23,6 +24,8 @@ try:
     from . import util
 except ImportError:
     import util
+
+from . import margin_utils as mu
 
 def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw, skiprows=None):
     # histogram the list of parts, and return it
@@ -69,7 +72,7 @@ def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw, skipro
     return img
 
 
-def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, dec_kw, id_kw, neighbor_pix, highest_k):
+def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, dec_kw, id_kw, neighbor_pix, highest_k, margin_threshold):
 
     base_filename = os.path.basename(url).split('.')[0]
     parqFn = os.path.join(cache_dir, base_filename + '.parquet')
@@ -86,7 +89,14 @@ def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, 
 
     neighbor_cache_df = df.merge(neighbor_pix, on='margin_pix')
 
-    res = neighbor_cache_df.groupby(['part_pix', 'part_order']).apply(_to_neighbor_cache, hipsPath=output_dir, base_filename=base_filename, ra_kw=ra_kw, dec_kw=dec_kw)
+    res = neighbor_cache_df.groupby(['part_pix', 'part_order']).apply(
+        _to_neighbor_cache, 
+        hipsPath=output_dir, 
+        base_filename=base_filename, 
+        ra_kw=ra_kw, 
+        dec_kw=dec_kw,
+        margin_threshold=margin_threshold
+    )
 
     del neighbor_cache_df
 
@@ -221,8 +231,7 @@ def _to_hips(df, hipsPath, base_filename):
     # return the number of records written
     return len(df)
 
-
-def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
+def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, margin_threshold=0.1):
     # WARNING: only to be used from df2hips(); it's defined out here just for debugging
     # convenience.
 
@@ -234,20 +243,12 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
     assert (df['part_pix'] == pix).all()
     assert (df['part_order']   ==   k).all()
 
-    resolution = hp.nside2resol(2**k, arcmin=True) / 60.
-    resolution_and_thresh = resolution + 0.1
-    scale = (resolution_and_thresh**2) / (resolution**2)
-    scale_matrix = np.array([[scale, 0],
-                            [0, scale]])
+    scale = mu.get_margin_scale(k, margin_threshold)
 
     # create the rough boundaries of the threshold bounding region.
-    # TODO: create a scaling affine transform that will scale this region to cover the
-    # necessary threshold.
-    pixel_boundaries = hp.vec2ang(hp.boundaries(2**k, pix, nest=True), lonlat=True)
-    vertices = PixCoord(x=pixel_boundaries[0], y=pixel_boundaries[1])
-    pixel_region = PolygonPixelRegion(vertices=vertices)
+    bounding_polygons = mu.get_margin_bounds_and_wcs(k, pix, scale)
 
-    df['margin_check'] = _check_margin_bounds(df[ra_kw].values, df[dec_kw].values, pixel_region)
+    df['margin_check'] = mu.check_margin_bounds(df[ra_kw].values, df[dec_kw].values, bounding_polygons)
 
     margin_df = df.loc[df['margin_check'] == True]
 
@@ -270,16 +271,6 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
 
     # return the number of records written
     return len(df)
-
-
-def _check_margin_bounds(ra, dec, pixel_region):
-    res = []
-    for i in range(len(ra)):
-        sc = PixCoord(x=ra[i], y=dec[i])
-        in_bounds = pixel_region.contains(sc)
-        res.append(in_bounds)
-    return res
-
 
 def _cross_match2(match_cats, c1_md, c2_md, c1_cols=[], c2_cols=[],  n_neighbors=1, dthresh=0.01):
 

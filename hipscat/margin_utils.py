@@ -5,6 +5,10 @@
 import numpy as np
 import healpy as hp
 
+from astropy.coordinates import SkyCoord
+from regions import PixCoord, PolygonSkyRegion, PolygonPixelRegion
+import astropy.wcs as wcs
+
 # see the documentation for get_edge() about this variable
 _edge_vectors = [
     np.asarray([1, 3]), # NE edge
@@ -192,3 +196,102 @@ def get_margin(kk, pix, dk):
     nb = list(get_edge(dk, px, edge) for edge, px in zip(which, n) if px != -1)
     nb = np.concatenate(nb)
     return nb
+
+def get_margin_scale(k, margin_threshold):
+    resolution = hp.nside2resol(2**k, arcmin=True) / 60.
+    resolution_and_thresh = resolution + (margin_threshold)
+    margin_area = resolution_and_thresh ** 2
+    pixel_area = hp.pixelfunc.nside2pixarea(2**k, degrees=True)
+    scale = margin_area / pixel_area
+    return scale
+
+def get_margin_bounds_and_wcs(k, pix, scale, step=10):
+    
+    pixel_boundaries = hp.vec2dir(hp.boundaries(2**k, pix, step=step, nest=True), lonlat=True)
+
+    n_samples = len(pixel_boundaries[0])
+    centroid_lon = np.sum(pixel_boundaries[0]) / n_samples
+    centroid_lat = np.sum(pixel_boundaries[1]) / n_samples
+    translate_lon = centroid_lon - (centroid_lon * scale)
+    translate_lat = centroid_lat - (centroid_lat * scale)
+
+    affine_matrix = np.array([[scale, 0, translate_lon],
+                              [0, scale, translate_lat],
+                              [0,     0,             1]])
+
+    homogeneous = np.ones((3, n_samples))
+    homogeneous[0] = pixel_boundaries[0]
+    homogeneous[1] = pixel_boundaries[1]
+
+    transformed_bounding_box = np.matmul(affine_matrix, homogeneous)
+
+    # if the transform places the declination of any points outside of
+    # the range 90 > dec > -90, change it to a proper dec value.
+    for i in range(len(transformed_bounding_box)):
+        dec = transformed_bounding_box[1][i]
+        if dec > 90.:
+            transformed_bounding_box[1][i] = 90. - (dec - 90.)
+        elif dec < -90.:
+            transformed_bounding_box[1][i] = -90. - (dec + 90.)
+
+
+    min_ra = np.min(transformed_bounding_box[0])
+    max_ra = np.max(transformed_bounding_box[0])
+    min_dec = np.min(transformed_bounding_box[1])
+    max_dec = np.max(transformed_bounding_box[1])
+
+    # one arcsecond
+    pix_size = 0.0002777777778
+
+    ra_naxis =int((max_ra - min_ra) / pix_size)
+    dec_naxis = int((max_dec - min_dec) / pix_size)
+
+    polygons = []
+    # for k < 2, the size of the bounding boxes breaks the regions
+    # code, so we subdivide the pixel into multiple parts with
+    # independent wcs.
+    if k < 2:
+        for i in range(4):    
+            j = i * step
+            lon = list(transformed_bounding_box[0][j:j+step+1])
+            lat = list(transformed_bounding_box[1][j:j+step+1])
+
+            lon.append(centroid_lon)
+            lat.append(centroid_lat)
+
+            wcs_sub = wcs.WCS(naxis=2)
+            wcs_sub.wcs.crpix = [1, 1]
+            wcs_sub.wcs.crval = [lon[0], lat[0]]
+            wcs_sub.wcs.cunit = ["deg", "deg"]
+            wcs_sub.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+            wcs_sub.wcs.cdelt = [pix_size, pix_size]
+            wcs_sub.array_shape = [int(ra_naxis/2), int(dec_naxis/2)]
+
+            vertices = SkyCoord(lon, lat, unit='deg')
+            sky_region = PolygonSkyRegion(vertices=vertices)
+            polygons.append((sky_region.to_pixel(wcs_sub), wcs_sub))
+    else:
+        wcs_margin = wcs.WCS(naxis=2)
+        wcs_margin.wcs.crpix = [1, 1]
+        wcs_margin.wcs.crval = [min_ra, min_dec]
+        wcs_margin.wcs.cunit = ["deg", "deg"]
+        wcs_margin.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        wcs_margin.wcs.cdelt = [pix_size, pix_size]
+        wcs_margin.array_shape = [ra_naxis, dec_naxis]
+
+        vertices = SkyCoord(transformed_bounding_box[0], transformed_bounding_box[1], unit='deg')
+        sky_region = PolygonSkyRegion(vertices=vertices)
+        polygon_region = sky_region.to_pixel(wcs_margin)
+        polygons = [(polygon_region, wcs_margin)]
+
+    return polygons
+
+def check_margin_bounds(ra, dec, poly_and_wcs):
+    sky_coords = SkyCoord(ra, dec, unit='deg')
+    bound_vals = []
+    for p, w in poly_and_wcs:
+        xv, yv = wcs.utils.skycoord_to_pixel(sky_coords, w)
+        pcs = PixCoord(xv, yv)
+        vals = p.contains(pcs)
+        bound_vals.append(vals)
+    return np.array(bound_vals).any(axis=0)
