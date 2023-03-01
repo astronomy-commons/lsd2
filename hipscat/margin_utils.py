@@ -227,7 +227,7 @@ def get_margin_bounds_and_wcs(k, pix, scale, step=10):
 
     # if the transform places the declination of any points outside of
     # the range 90 > dec > -90, change it to a proper dec value.
-    for i in range(len(transformed_bounding_box)):
+    for i in range(len(transformed_bounding_box[1])):
         dec = transformed_bounding_box[1][i]
         if dec > 90.:
             transformed_bounding_box[1][i] = 90. - (dec - 90.)
