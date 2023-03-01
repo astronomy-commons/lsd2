@@ -13,25 +13,23 @@ import warnings
 
 from . import util
 from . import dask_utils as du
-from . import partitioner as pt
-
-'''
-
-user experience:
-
-    from hipscat import catalog as cat
-    gaia = cat.Catalog('gaia')
-
-    -> checks in source location for the 'hierarchical formatted data'
-
-    -> if it isn't located in source notify user that the catalog must be formatted
-
-    -> local formatting gaia.hips_import(dir='/path/to/catalog/', fmt='csv.gz') [1]
-        this outputs to local directory: output/ (crib mario's code for gaia 1st 10 files)
+from .partitioner import Partitioner
 
 
-'''
-class Catalog():
+class Catalog:
+    """
+    user experience:
+
+        from hipscat import catalog as cat
+        gaia = cat.Catalog('gaia')
+
+        -> checks in source location for the 'hierarchical formatted data'
+
+        -> if it isn't located in source notify user that the catalog must be formatted
+
+        -> local formatting gaia.hips_import(dir='/path/to/catalog/', fmt='csv.gz') [1]
+            this outputs to local directory: output/ (crib mario's code for gaia 1st 10 files)
+    """
 
     def __init__(self, catname='gaia', source='local', location='/epyc/projects3/sam_hipscat/'):
 
@@ -47,7 +45,7 @@ class Catalog():
         if self.source == 'local':
             self.output_dir = os.path.join(self.location, 'output', self.catname)
             if not os.path.exists(self.output_dir):
-                print('No local hierarchal catalog exists, run catalog.hips_import(file_source=\'/path/to/file_or_files\', fmt=\'csv.gz\')')
+                raise FileNotFoundError('No local hierarchal catalog exists, run catalog.hips_import(file_source=\'/path/to/file_or_files\', fmt=\'csv.gz\')')
             else:
                 metadata_file = os.path.join(self.output_dir, f'{self.catname}_meta.json')
 
@@ -56,12 +54,12 @@ class Catalog():
                     with open(metadata_file) as f:
                         self.hips_metadata = json.load(f)
                 else:
-                    print('Catalog not fully imported. Re-run catalog.hips_import()')
+                    raise FileNotFoundError('Catalog not fully imported. Re-run catalog.hips_import()')
 
         elif self.source == 's3':
-            sys.exit('Not Implemented ERROR')
+            raise NotImplementedError
         else:
-            sys.exit('Not Implemented ERROR')
+            raise NotImplementedError
 
 
     def __repr__(self):
@@ -75,10 +73,14 @@ class Catalog():
     def load(self, columns=None):
         #dirty way to load as a dask dataframe
         assert self.hips_metadata is not None, 'Catalog has not been partitioned!'
-        hipscat_dir = os.path.join(self.output_dir, 'Norder*', 'Npix*', 'catalog.parquet')
 
-        #ensure user doesn't pass in empty list
-        columns = columns if (isinstance(columns, list) and len(columns) > 0) else None
+        # validate columns input
+        if not isinstance(columns, list):
+            raise TypeError("columns must be supplied as a list")
+        columns = columns if len(columns) > 0 else None
+
+        # Construct path to load catalog files, using wildcards to load multiple files
+        hipscat_dir = os.path.join(self.output_dir, 'Norder*', 'Npix*', 'catalog.parquet')
 
         self.lsddf = dd.read_parquet(
             hipscat_dir,
@@ -91,29 +93,30 @@ class Catalog():
     def hips_import(self, file_source='/data2/epyc/data/gaia_edr3_csv/',
         fmt='csv.gz', debug=False, verbose=True, limit=None, threshold=1_000_000,
         ra_kw='ra', dec_kw='dec', id_kw='source_id', client=None):
-
-        '''
+        """
             ingests a list of source catalog files and partitions them out based
             on hierarchical partitioning of size on healpix map
 
             supports http list of files, s3 bucket files, or local files
             formats currently supported: csv.gz, csv, fits, parquet
-        '''
+        """
 
         if 'http' in file_source:
             urls = util.get_csv_urls(url=file_source, fmt=fmt)
 
         elif 's3' in file_source:
-            sys.exit('Not Implemented ERROR')
+            raise NotImplementedError
 
-        else: #assume local?
-            if os.path.exists(file_source):
-                fs_clean = file_source
-                if fs_clean[-1] != '/':
-                    fs_clean += '/'
-                urls = glob.glob('{}*{}'.format(fs_clean, fmt))
-            else:
-                sys.exit('Local files not found at source {}'.format(file_source))
+        else:   # assume local?
+            if not os.path.exists(file_source):
+                raise FileNotFoundError('Local files not found at source {}'.format(file_source))
+
+            # make sure local file_source is a path
+            fs_clean = file_source
+            if not fs_clean.endswith('/'):
+                fs_clean += '/'
+
+            urls = glob.glob('{}*{}'.format(fs_clean, fmt))
 
         if limit:
             urls = urls[0:limit]
@@ -122,7 +125,7 @@ class Catalog():
             print(f'Attempting to format files: {len(urls)}')
 
         if len(urls):
-            self.partitioner = pt.Partitioner(catname=self.catname, fmt=fmt, urls=urls, id_kw=id_kw,
+            self.partitioner = Partitioner(catname=self.catname, fmt=fmt, urls=urls, id_kw=id_kw,
                         order_k=10, verbose=verbose, debug=debug, ra_kw=ra_kw, dec_kw=dec_kw, 
                         location=self.location)
 
