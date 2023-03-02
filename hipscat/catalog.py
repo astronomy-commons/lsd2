@@ -17,7 +17,8 @@ from .partitioner import Partitioner
 
 
 class Catalog:
-    """
+    """An LSD2 Catalog used to import and interact with LDS2 HiPSCat formatted catalogs
+
     user experience:
 
         from hipscat import catalog as cat
@@ -45,7 +46,7 @@ class Catalog:
         if self.source == 'local':
             self.output_dir = os.path.join(self.location, 'output', self.catname)
             if not os.path.exists(self.output_dir):
-                raise FileNotFoundError('No local hierarchal catalog exists, run catalog.hips_import(file_source=\'/path/to/file_or_files\', fmt=\'csv.gz\')')
+                print('No local hierarchal catalog exists, run catalog.hips_import(file_source=\'/path/to/file_or_files\', fmt=\'csv.gz\')')
             else:
                 metadata_file = os.path.join(self.output_dir, f'{self.catname}_meta.json')
 
@@ -71,8 +72,17 @@ class Catalog:
 
 
     def load(self, columns=None):
-        #dirty way to load as a dask dataframe
-        assert self.hips_metadata is not None, 'Catalog has not been partitioned!'
+        """Load a catalog into a dask dataframe
+        Args:
+            columns: list of columns to include in the dataframe
+
+        Returns:
+            dataframe with catalog data, partitioned by HiPSCat partitioning
+
+        """
+        # dirty way to load as a dask dataframe
+        if self.hips_metadata is None:
+            raise ValueError(f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran')
 
         # validate columns input
         if not isinstance(columns, list):
@@ -137,22 +147,29 @@ class Catalog:
                 self.partitioner.run(client=client)
                 self.__init__(self.catname, location=self.location)
         else:
-            print('No files Found!')
+            raise FileNotFoundError('No files Found!')
 
 
     def cone_search(self, ra, dec, radius, columns=None):
-        '''
+        """
         Perform a cone search on HiPSCat
 
-        Parameters:
+        Args:
          ra:     float, Right Ascension
          dec:    float, Declination
          radius: float, Radius from center that circumvents, must be in degrees
-        '''
-        assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
-        assert isinstance(ra, (int, float)), f'ra must be a number'
-        assert isinstance(dec, (int, float)), f'dec must be a number'
-        assert isinstance(radius, (int, float)), f'radius must be a number'
+         Returns:
+             Dask dataframe containing the data within the cone_search
+        """
+        if self.hips_metadata is None:
+            raise ValueError(f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran')
+
+        if not isinstance(ra, (int, float)):
+            raise TypeError(f'ra must be a number')
+        if not isinstance(dec, (int, float)):
+            raise TypeError(f'dec must be a number')
+        if not isinstance(radius, (int, float)):
+            raise TypeError(f'radius must be a number')
         
         #establish metadata for the returning dask.dataframe
         # user can select columns
@@ -162,7 +179,7 @@ class Catalog:
         meta = ddf._meta
         meta['_DIST'] = []
         
-        #utilize the healpy library to find the pixels that exist
+        # utilize the healpy library to find the pixels that exist
         # within the cone. 
         vec = hp.ang2vec(ra, dec, lonlat=True)
         rad = np.radians(radius)
@@ -170,7 +187,7 @@ class Catalog:
         nside = hp.order2nside(highest_order)
         pixels_to_query = hp.query_disc(nside, vec, rad, nest=True, inclusive=True)
         
-        #query our hips metadata for partitioned pixel catalogs that 
+        # query our hips metadata for partitioned pixel catalogs that
         # lie within the cone
         cone_search_map = []
         for p in pixels_to_query:
@@ -181,21 +198,24 @@ class Catalog:
                     cat_path = os.path.join(self.output_dir, f'Norder{mo}', f'Npix{mp}', 'catalog.parquet')
                     cone_search_map.append(cat_path)
 
-        #only need a catalog once, remove duplicates
+        # only need a catalog once, remove duplicates
         # and then create the dask.dataframe that will perform 
-        # the map_partitions of the cone_search the only parameter 
-        # we need in this dataframe is the catalog pathways
+        # the map_partitions of the cone_search. The only parameter
+        # we need in this dataframe is the catalog paths.
+        # In the map_partitions performed later, these paths will be loaded
+        # as pandas dataframes and filtered
         cone_search_map = list(set(cone_search_map))
         cone_search_map_dict = {
             'catalog':cone_search_map
         }
 
-        #nparts = len(cone_search_map_dict[list(cone_search_map_dict.keys())[0]])
         nparts = len(cone_search_map)
         if nparts == 0:
             #No sources in the catalog within the disc
             return dd.from_pandas(meta, npartitions=1)
 
+        # Create a dask_df with the paths of the partitions to be
+        # loaded and filtered
         cone_search_df = dd.from_pandas(
             pd.DataFrame(
                 cone_search_map_dict, 
@@ -215,8 +235,8 @@ class Catalog:
 
 
     def cross_match(self, othercat=None, c1_cols=[], c2_cols=[], n_neighbors=1, dthresh=0.01, evaluate_margins=True, debug=False):
-        '''
-            Parameters:
+        """ Perform a nearest neighbors crossmatch to another catalog
+             Args:
                 othercat- other hipscat catalog
 
                 user-defined columns to return for dataframe
@@ -224,13 +244,18 @@ class Catalog:
                 c2_cols- list of [column_name]
                 n_neighbors - number of nearest neighbors to find for each souce in catalog1
                 dthresh- distance threshold for nearest neighbors (decimal degrees)
-        '''
+        """
 
-        assert othercat is not None, 'Must specify another catalog to crossmatch with.'
-        assert isinstance(othercat, Catalog), 'The other catalog must be an instance of hipscat.Catalog.'
-        assert self.catname != othercat.catname, "Cannot cross_match catalog with self"
-        assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
-        assert othercat.hips_metadata is not None, f'{othercat} hipscat metadata not found. {othercat}.hips_import() needs to be (re-) ran'
+        if othercat is None:
+            raise ValueError('Must specify another catalog to crossmatch with.')
+        if not isinstance(othercat, Catalog):
+            raise TypeError('The other catalog must be an instance of hipscat.Catalog.')
+        if self.catname == othercat.catname:
+            raise ValueError("Cannot cross_match catalog with self")
+        if self.hips_metadata is None:
+            raise ValueError(f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran')
+        if othercat.hips_metadata is None:
+            raise ValueError(f'{othercat} hipscat metadata not found. {othercat}.hips_import() needs to be (re-) ran')
 
         #Gather the metadata from the already partitioned catalogs
         cat1_md = self.hips_metadata
@@ -326,15 +351,20 @@ class Catalog:
 
 
     def visualize_sources(self, figsize=(5,5)):
-        '''
-        Returns hp.mollview() of the high order pixel map that is 
-        calculated during the partitioning routine. 
-        
-        inputs:
+        """Visualize the sources of a catalog
+
+        plots the high order pixel map that is
+        calculated during the partitioning routine.
+
+        Visualize from notebook
+
+        Args:
             figsize=Tuple(x,y) for the figure size
 
-        Visualize from notebook    
-        '''
+        Returns:
+             hp.mollview() of the high order pixel map that is
+        calculated during the partitioning routine.
+        """
         #Look for the output_dir created from 
         if self.output_dir is None:
             raise FileNotFoundError('hipscat output_dir not found. hips_import() needs to be (re-) ran')
@@ -352,16 +382,19 @@ class Catalog:
 
 
     def visualize_partitions(self, figsize=(5,5)):
-        '''
-        Returns hp.mollview() of the partitioning structure that is 
-        calculated during the partitioning routine. 
-        
-        inputs: 
-            figsize=Tuple(x,y) for the figure size
+        """Visualize the partition structure of a catalog
 
         Visualize from notebook
-        '''
-        assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
+
+        Args:
+            figsize=Tuple(x,y) for the figure size
+
+        Returns:
+             hp.mollview() of the partitioning structure that is
+        calculated during the partitioning routine.
+        """
+        if self.hips_metadata is None:
+            raise ValueError(f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran')
 
         catalog_hips = self.hips_metadata["hips"]
         k = max([int(x) for x in catalog_hips.keys()])
@@ -382,21 +415,26 @@ class Catalog:
             
         
     def visualize_cone_search(self, ra, dec, radius, figsize=(5,5)):
-        '''
-        Returns hp.mollview() of a cone-search 
+        ''' Visualize a cone search of a catalog
+
+        Visualize from notebook
         
-        inputs: 
+        Args:
             ra=float, Right Ascension in decimal degrees
             dec=float, Declination in decimal degrees
             radius=float, Radius of cone in degrees
             figsize=Tuple(x,y), for the figure size
-
-        Visualize from notebook
+        Returns:
+             hp.mollview() of a cone-search
         '''
-        assert self.hips_metadata is not None, f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran'
-        assert isinstance(ra, (int, float)), f'ra must be a number'
-        assert isinstance(dec, (int, float)), f'dec must be a number'
-        assert isinstance(radius, (int, float)), f'radius must be a number'
+        if self.hips_metadata is None:
+            raise ValueError(f'{self} hipscat metadata not found. {self}.hips_import() needs to be (re-) ran')
+        if not isinstance(ra, (int, float)):
+            raise TypeError(f'ra must be a number')
+        if not isinstance(dec, (int, float)):
+            raise TypeError(f'dec must be a number')
+        if not isinstance(radius, (int, float)):
+            raise TypeError(f'radius must be a number')
 
         highest_order = 10
         nside = hp.order2nside(highest_order)
@@ -436,15 +474,16 @@ class Catalog:
 
 
     def visualize_cross_match(self, othercat, figsize=(5,5)):
-        '''
-            Returns hp.mollview of the overlap when crossmatching two catalogs
-
-            inputs:
-                othercat=hipscat.Catalog()
-                figsuze=Tuple(x,y)
+        """Visualize the cross match between two catalogs
 
         Visualize from notebook
-        '''
+
+            Args:
+                othercat=hipscat.Catalog()
+                figsuze=Tuple(x,y)
+            Returns:
+                 hp.mollview of the overlap when crossmatching two catalogs
+        """
         raise NotImplementedError('catalog.visualize_cross_match() not implemented yet')
 
 
