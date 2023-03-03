@@ -12,9 +12,6 @@ import dask.dataframe as dd
 import dask
 
 from astropy.table import Table
-from astropy.coordinates import SkyCoord
-from regions import PixCoord, PolygonSkyRegion, PolygonPixelRegion
-import astropy.wcs as wcs
 from functools import partial
 from dask.distributed import Client, progress
 from dask.delayed import delayed
@@ -25,7 +22,7 @@ try:
 except ImportError:
     import util
 
-from . import margin_utils as mu
+from . import margin_utils
 
 def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw, skiprows=None):
     # histogram the list of parts, and return it
@@ -243,12 +240,12 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, margin_thresh
     assert (df['part_pix'] == pix).all()
     assert (df['part_order']   ==   k).all()
 
-    scale = mu.get_margin_scale(k, margin_threshold)
+    scale = margin_utils.get_margin_scale(k, margin_threshold)
 
     # create the rough boundaries of the threshold bounding region.
-    bounding_polygons = mu.get_margin_bounds_and_wcs(k, pix, scale)
+    bounding_polygons = margin_utils.get_margin_bounds_and_wcs(k, pix, scale)
 
-    df['margin_check'] = mu.check_margin_bounds(df[ra_kw].values, df[dec_kw].values, bounding_polygons)
+    df['margin_check'] = margin_utils.check_margin_bounds(df[ra_kw].values, df[dec_kw].values, bounding_polygons)
 
     margin_df = df.loc[df['margin_check'] == True]
 

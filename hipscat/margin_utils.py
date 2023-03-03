@@ -7,7 +7,7 @@ import healpy as hp
 
 from astropy.coordinates import SkyCoord
 from regions import PixCoord, PolygonSkyRegion, PolygonPixelRegion
-import astropy.wcs as wcs
+import astropy.wcs as world_coordinate_system
 
 # see the documentation for get_edge() about this variable
 _edge_vectors = [
@@ -251,27 +251,39 @@ def get_margin_bounds_and_wcs(k, pix, scale, step=10):
     # code, so we subdivide the pixel into multiple parts with
     # independent wcs.
     if k < 2:
-        for i in range(4):    
-            j = i * step
-            lon = list(transformed_bounding_box[0][j:j+step+1])
-            lat = list(transformed_bounding_box[1][j:j+step+1])
+        # k == 0 -> 16 subdivisions, k == 1 -> 4 subdivisions
+        divs = 4 ** (2 - k)
+        div_len = int((step * 4) / divs)
+        for i in range(divs):
+            j = i * div_len
+            lon = list(transformed_bounding_box[0][j:j+div_len+1])
+            lat = list(transformed_bounding_box[1][j:j+div_len+1])
+            
+            # in the last div, include the first data point
+            # to ensure that we cover the whole area
+            if i == divs - 1:
+                lon.append(transformed_bounding_box[0][0])
+                lat.append(transformed_bounding_box[1][0])
 
             lon.append(centroid_lon)
             lat.append(centroid_lat)
 
-            wcs_sub = wcs.WCS(naxis=2)
+            ra_axis = int(ra_naxis / (2 ** (2 - k)))
+            dec_axis = int(dec_naxis / (2 ** (2 - k)))
+
+            wcs_sub = world_coordinate_system.WCS(naxis=2)
             wcs_sub.wcs.crpix = [1, 1]
             wcs_sub.wcs.crval = [lon[0], lat[0]]
             wcs_sub.wcs.cunit = ["deg", "deg"]
             wcs_sub.wcs.ctype = ["RA---TAN", "DEC--TAN"]
             wcs_sub.wcs.cdelt = [pix_size, pix_size]
-            wcs_sub.array_shape = [int(ra_naxis/2), int(dec_naxis/2)]
+            wcs_sub.array_shape = [ra_axis, dec_axis]
 
             vertices = SkyCoord(lon, lat, unit='deg')
             sky_region = PolygonSkyRegion(vertices=vertices)
             polygons.append((sky_region.to_pixel(wcs_sub), wcs_sub))
     else:
-        wcs_margin = wcs.WCS(naxis=2)
+        wcs_margin = world_coordinate_system.WCS(naxis=2)
         wcs_margin.wcs.crpix = [1, 1]
         wcs_margin.wcs.crval = [min_ra, min_dec]
         wcs_margin.wcs.cunit = ["deg", "deg"]
@@ -290,7 +302,7 @@ def check_margin_bounds(ra, dec, poly_and_wcs):
     sky_coords = SkyCoord(ra, dec, unit='deg')
     bound_vals = []
     for p, w in poly_and_wcs:
-        xv, yv = wcs.utils.skycoord_to_pixel(sky_coords, w)
+        xv, yv = world_coordinate_system.utils.skycoord_to_pixel(sky_coords, w)
         pcs = PixCoord(xv, yv)
         vals = p.contains(pcs)
         bound_vals.append(vals)
