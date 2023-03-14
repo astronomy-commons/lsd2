@@ -32,12 +32,13 @@ $ mkdir git
 ### Setting up virtual development environment
 
 ```bash
-$ conda create -n hipscatenv python=3.7
+$ conda create -n hipscatenv python=3.10
 $ source activate hipscatenv
 $ cd ~/git
 $ git clone https://github.com/astronomy-commons/lsd2
 $ cd lsd2
 $ python -m pip install -r requirements.txt
+$ ipython kernel install --user --name=hipscatenv
 $ source setup.bash
 $ pip install -e
 ```
