@@ -65,10 +65,15 @@ import hipscat as hc
 catalog = hc.Catalog('gaia', location='/path/to/hips/catalog/outputdir')
 ```
 
-The repository will look for an already partitioned catalog at that pathway `location + /output/catname`. If it doesn't find one, it will notify the user to import an existing source catalog utilizing `hipscat.Catalog.hips_import(...)`
+The repository will look for an already partitioned catalog at that pathway `location + /output/catname`. Currently the `location` keyword supports finding hipscat objects on
+* local disk
+* azure blob file system (abfs)
+* aws s3 bucket (s3 boto) coming soon!
 
-This function requires the following parameters:
-* `file_source`: this can be a directory pathway to a existing local catalog or it can be an http api-endpoing serving a list of catalog files.
+If it doesn't find one, it will notify the user to import an existing source catalog utilizing the `hipscat.Partitioner` class.
+
+The instantiation requires the following parameters:
+* `urls`: this is a list of string pathways to a existing local catalog or it can be an http api-endpoing serving a list of catalog files. You can utilize the `hipscat.util.get_cat_urls(...)` method to create these.
 * `fmt`: the catalog list file formats. Currently accepted formats are `csv`, `csv.gz`, `parquet`, and `fits`.
 * `ra_kw`: the column name in the catalog files corresponding the to the sources' right ascension (RA).
 * `dec_kw`: the column name in the catalog files corresponding the to the sources' declination (DEC).
@@ -79,53 +84,76 @@ This function requires the following parameters:
 Example:
 
 ```python
+import numpy as np
+import hipscat as hc
 from dask.distributed import Client
 
-client=Client(n_workers=12, threads_per_worker=1)
+#specify the dask distributed client
+client = Client(n_workers=12, threads_per_worker=1)
 
-catalog.hips_import(
-  file_source='/path/to/catalog/files', #or https://example.com/your_source_catalog_endpoint
-  fmt='csv', #['csv', 'csv.gz', 'parquet', 'fits']
-  ra_kw='ra',
-  dec_kw='dec',
-  id_kw='id',
-  threshold=1_000_000,
-  client=client
+#specify the location of the catalog you wish to partition
+# and grab the urls
+file_source='http://cdn.gea.esac.esa.int/Gaia/gdr3/gaia_source/'
+fmt = 'csv.gz' # can be csv, csv.gz, parquet, or fits 
+urls = hc.util.get_cat_urls(url=file_source, fmt=fmt)
+
+#some parquet dtypes aren't always interpreted correctly
+# if you want to specify specific dtypes, you can do it with this dictionary
+manual_dtype = {'libname_gspphot':'unicode'}
+
+#instantiate the lsd2 partitioner object
+partitioner = hc.Partitioner(
+    catname='gaia', 
+    fmt=fmt, 
+    urls=urls, 
+    id_kw='source_id',
+    ra_kw='ra',
+    dec_kw='dec',
+    threshold=1_000_000,
+    skiprows=np.arange(0,1000), # skips the first 1000 rows of gaia dr3 column metadata
+    dtypes=manual_dtype
 )
+
+partitioner.run(client=client)
 ```
 
-When this runs, it will create two directories in the specified `location` parameter in the catalog instantiation above: 
+When this runs, it will create directories in the specified `location` parameter in the catalog instantiation above: 
 * `cache`: here it will save the source catalogs for faster partitioning if the process needs to be re-ran.
-* `output`: here is where it writes the partitioned structure based on the spatial healpix ordering and source density (defined by the `threshold` parameter) along with neighbor margin sources for accurate cross-matches between hipscats. The partitioned structure will follow as an example:
+* `catname/catalog`: here is where it writes the partitioned structure based on the spatial healpix ordering and source density (defined by the `threshold` parameter) along with neighbor margin sources for accurate cross-matches between hipscats. The partitioned structure will follow as an example:
 ```bash
+_metadata
+_common_metadata
 /Norder1/
    -> Npix5/
         -> catalog.parquet
-        -> neighbor.parquet
    -> Npix15/
         -> catalog.parquet
-        -> neighbor.parquet
 /Norder2/
    -> Npix54/
         -> catalog.parquet
-        -> neighbor.parquet
    -> Npix121/
         -> catalog.parquet
-        -> neighbor.parquet
    -> Npix124/
         -> catalog.parquet
-        -> neighbor.parquet
 ...
 /NorderN/
    -> [NpixN/
         -> catalog.parquet
+   ]
+```
+* `catname/neighbor`: here is where it writes the partitioned structure for the calculated margins for each of the HiPSCat directories above. Each directory will contain a margin area surrounding each pixel kept in this hipscat directory.
+```bash
+_metadata
+_common_metadata
+/NorderN/
+   -> [NpixN/
         -> neighbor.parquet
    ]
 ```
 
 It will also create two files:
 * a catalog `metadata.json` that contains the basic metadata from the partitioning instatiation and running.
-* a healpix map that saves the spatial source distribution at a high order (default to healpix order 10). 
+* a healpix map that saves the spatial source distribution at a high order. 
 
 ## Example Usage
 A full tutorial of use-cases are viewable in the `/examples/example_usage.ipynb` notebook.
@@ -163,7 +191,16 @@ Once two catalogs have been imported in this hips format, we can perform a basic
 client=Client(n_workers=12, threads_per_worker=1)
 
 c1 = hc.Catalog('sdss', location='/path/to/hips/catalog/outputdir')
-c2 = hc.Catalog('gaia', location='/path/to/hips/catalog/outputdir')
+c2 = hc.Catalog(
+  'gaia', 
+  location='abfs://sdss.dfs.core.windows.net/hipscat/', 
+  storage_options={
+    'account_name' : '...', 
+    'tenant_id'    : '...',
+    'client_id'    : '...',
+    'client_secret': '...'
+  }
+)
 
 c1_cols = []
 c2_cols = ['pmdec', 'pmra']
@@ -177,19 +214,19 @@ result = c1.cross_match(
 )
 ```
 
-Returns a `dask.dataframe` of the result where all columns selected are prefixed by `catalogname_`. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
+Returns a `dask.dataframe` of the result where all columns selected are prefixed by `catalogname.`. From this result the user can utilize the `dask.dataframe` api, and leverage its strengths for example:
 
 ```python
 r = result.compute() # performs the cross match computation
 
 r2 = result.assign( #create a new column from the result
-  pm=lambda x: np.sqrt(x.gaia_pmra**2 + x.gaia_pmdec**2)
+  pm=lambda x: np.sqrt(x['gaia.pmra']**2 + x['gaia.pmdec']**2)
 ).compute()
 
 r3 = result.assign( #create a new column from the result
   pm=lambda x: np.sqrt(x['gaia.pmra']**2 + x['gaia.pmdec']**2)
 ).query( #filter the result 
-  'pm > 1.0' #prefixed column names must be surrounded by backticks. i.e `
+  'pm > 1.0' #prefixed column names must be surrounded by backticks. i.e `gaia.pmdec` > 10
 ).to_parquet( #write the result to a parquet file
   "path/to/my/parquet/"
 ).compute() 
