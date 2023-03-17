@@ -14,54 +14,27 @@ import warnings
 from . import util
 from . import dask_utils as du
 from . import partitioner as pt
-
-'''
-
-user experience:
-
-    from hipscat import catalog as cat
-    gaia = cat.Catalog('gaia')
-
-    -> checks in source location for the 'hierarchical formatted data'
-
-    -> if it isn't located in source notify user that the catalog must be formatted
-
-    -> local formatting gaia.hips_import(dir='/path/to/catalog/', fmt='csv.gz') [1]
-        this outputs to local directory: output/ (crib mario's code for gaia 1st 10 files)
+from . import lsd2_io
 
 
-'''
 class Catalog():
 
-    def __init__(self, catname='gaia', source='local', location='/epyc/projects3/sam_hipscat/'):
+    def __init__(self, catname='gaia', location='/epyc/projects3/sam_hipscat/', storage_options=None):
 
         self.catname = catname
-        self.source = source
+        self.location = location
+        self.storage_options = storage_options
         self.hips_metadata = None
         self.partitioner = None
         self.output_dir = None
         self.result = None
-        self.location = location
         self.lsddf = None
 
-        if self.source == 'local':
-            self.output_dir = os.path.join(self.location, 'output', self.catname)
-            if not os.path.exists(self.output_dir):
-                print('No local hierarchal catalog exists, run catalog.hips_import(file_source=\'/path/to/file_or_files\', fmt=\'csv.gz\')')
-            else:
-                metadata_file = os.path.join(self.output_dir, f'{self.catname}_meta.json')
-
-                if os.path.exists(metadata_file):
-                    print(f'Located Partitioned Catalog: {metadata_file}')
-                    with open(metadata_file) as f:
-                        self.hips_metadata = json.load(f)
-                else:
-                    print('Catalog not fully imported. Re-run catalog.hips_import()')
-
-        elif self.source == 's3':
-            sys.exit('Not Implemented ERROR')
-        else:
-            sys.exit('Not Implemented ERROR')
+        self.output_dir = os.path.join(self.location, self.catname)
+        if not lsd2_io.file_exists(self.output_dir, self.storage_options):
+            raise FileNotFoundError(f"Location to HiPSCatalog does not exist")
+        
+        self.hips_metadata = lsd2_io.read_hipsmeta_file(self.output_dir, self.storage_options)
 
 
     def __repr__(self):
@@ -75,66 +48,18 @@ class Catalog():
     def load(self, columns=None):
         #dirty way to load as a dask dataframe
         assert self.hips_metadata is not None, 'Catalog has not been partitioned!'
-        hipscat_dir = os.path.join(self.output_dir, 'Norder*', 'Npix*', 'catalog.parquet')
 
         #ensure user doesn't pass in empty list
         columns = columns if (isinstance(columns, list) and len(columns) > 0) else None
 
-        self.lsddf = dd.read_parquet(
-            hipscat_dir,
-            calculate_divisions=True,
-            columns=columns
+        self.lsddf = lsd2_io.read_parquet(
+            pathway=self.output_dir,
+            library='dask',
+            engine='pyarrow',
+            columns=columns,
+            storage_options=self.storage_options
         )
         return self.lsddf
-
-
-    def hips_import(self, file_source='/data2/epyc/data/gaia_edr3_csv/',
-        fmt='csv.gz', debug=False, verbose=True, limit=None, threshold=1_000_000,
-        ra_kw='ra', dec_kw='dec', id_kw='source_id', client=None):
-
-        '''
-            ingests a list of source catalog files and partitions them out based
-            on hierarchical partitioning of size on healpix map
-
-            supports http list of files, s3 bucket files, or local files
-            formats currently supported: csv.gz, csv, fits, parquet
-        '''
-
-        if 'http' in file_source:
-            urls = util.get_csv_urls(url=file_source, fmt=fmt)
-
-        elif 's3' in file_source:
-            sys.exit('Not Implemented ERROR')
-
-        else: #assume local?
-            if os.path.exists(file_source):
-                fs_clean = file_source
-                if fs_clean[-1] != '/':
-                    fs_clean += '/'
-                urls = glob.glob('{}*{}'.format(fs_clean, fmt))
-            else:
-                sys.exit('Local files not found at source {}'.format(file_source))
-
-        if limit:
-            urls = urls[0:limit]
-
-        if verbose:
-            print(f'Attempting to format files: {len(urls)}')
-
-        if len(urls):
-            self.partitioner = pt.Partitioner(catname=self.catname, fmt=fmt, urls=urls, id_kw=id_kw,
-                        order_k=10, verbose=verbose, debug=debug, ra_kw=ra_kw, dec_kw=dec_kw, 
-                        location=self.location)
-
-            if debug:
-                self.partitioner.gather_statistics()
-                self.partitioner.compute_partitioning_map(max_counts_per_partition=threshold)
-                self.partitioner.write_structure_metadata()
-            else:
-                self.partitioner.run(client=client)
-                self.__init__(self.catname, location=self.location)
-        else:
-            print('No files Found!')
 
 
     def cone_search(self, ra, dec, radius, columns=None):
@@ -155,8 +80,12 @@ class Catalog():
         # user can select columns
         # returns a distance column for proximity metric
 
-        ddf = self.load(columns=columns)
+        ddf = self.load(columns=util.validate_user_input_cols(columns, self.hips_metadata))
         meta = ddf._meta
+
+        if columns is None and all(x in meta.columns for x in ['dir0', 'dir1']):
+            meta = meta.drop(columns=['dir0', 'dir1'], axis=1)
+
         meta['_DIST'] = []
         
         #utilize the healpy library to find the pixels that exist
@@ -175,7 +104,7 @@ class Catalog():
             for mo in mapped_dict:
                 mapped_pixels = mapped_dict[mo]
                 for mp in mapped_pixels:
-                    cat_path = os.path.join(self.output_dir, f'Norder{mo}', f'Npix{mp}', 'catalog.parquet')
+                    cat_path = os.path.join(self.output_dir, 'catalog', lsd2_io.get_hipscat_pixel_file(mo, mp))
                     cone_search_map.append(cat_path)
 
         #only need a catalog once, remove duplicates
@@ -206,6 +135,7 @@ class Catalog():
             du.cone_search_from_daskdf,
             ra=ra, dec=dec, radius=radius, 
             c_md=self.hips_metadata, columns=columns,
+            storage_options=self.storage_options,
             meta=meta
         )   
         return result
@@ -305,8 +235,8 @@ class Catalog():
 
         #let the user know they are about to get huge dataframes
         if len(meta.columns) > 50:
-            warnings.warn('The number of columns in the returned dataframe is greater than 50. \
-                This could potentially excede the expected computation time. \
+            warnings.warn('The number of columns in the returned dataframe is greater than 50. \n \
+                This could potentially excede the expected computation time. \n \
                 It is highly suggested to limit the return columns for the cross_match with the c1_cols=[...], and c2_cols=[...] parameters'
             )
 
@@ -317,7 +247,8 @@ class Catalog():
             n_neighbors=n_neighbors,
             dthresh=dthresh,
             evaluate_margins=evaluate_margins,
-            meta = meta
+            storage_options=self.storage_options,
+            meta=meta
         )
         return self.result
 
@@ -332,18 +263,8 @@ class Catalog():
 
         Visualize from notebook    
         '''
-        #Look for the output_dir created from 
-        if self.output_dir is None:
-            raise FileNotFoundError('hipscat output_dir not found. hips_import() needs to be (re-) ran')
 
-        outputdir_files = os.listdir(self.output_dir)
-        maps = [x for x in outputdir_files if f'{self.catname}_order' in x and 'hpmap.fits' in x]
-        
-        if len(maps) == 0:
-            raise FileNotFoundError('map not found. hips_import() needs to be (re-) ran')
-
-        mapFn = os.path.join(self.output_dir, maps[0])
-        img = hp.read_map(mapFn)
+        img = lsd2_io.read_fits_file(self.output_dir, self.storage_options)
         fig = plt.figure(figsize=figsize)
         return hp.mollview(np.log10(img+1), fig=fig, title=f'{self.catname}: {img.sum():,.0f} sources', nest=True)
 
@@ -395,34 +316,14 @@ class Catalog():
         assert isinstance(dec, (int, float)), f'dec must be a number'
         assert isinstance(radius, (int, float)), f'radius must be a number'
 
+        #grab the required parameters for hp.query(disc)
         highest_order = 10
         nside = hp.order2nside(highest_order)
         vec = hp.ang2vec(ra, dec, lonlat=True)
         rad = np.radians(radius)
         pixels_to_query = hp.query_disc(nside, vec, rad, nest=True)
 
-        #Look for the output_dir created from 
-        if self.output_dir is None:
-            raise FileNotFoundError('hipscat output_dir not found. hips_import() needs to be (re-) ran')
-
-        #look for the pixel map fits file
-        outputdir_files = os.listdir(self.output_dir)
-        maps = [x for x in outputdir_files if f'{self.catname}_order' in x and 'hpmap.fits' in x]
-        if len(maps) == 0:
-            raise FileNotFoundError('map not found. hips_import() needs to be (re-) ran')
-
-        #grab the first one in the list
-        map0 = maps[0]
-        mapFn = os.path.join(self.output_dir, map0)
-
-        #grab the required parameters for hp.query(disc)
-        highest_order = int(mapFn.split('order')[1].split('_')[0])
-        nside = hp.order2nside(highest_order)
-        vec = hp.ang2vec(ra, dec, lonlat=True)
-        rad = np.radians(radius)
-        pixels_to_query = hp.query_disc(nside, vec, rad, nest=True)
-
-        img = hp.read_map(mapFn)
+        img = lsd2_io.read_fits_file(self.output_dir, self.storage_options)
         maxN = max(np.log10(img+1))+1
 
         #plot pencil beam. Maybe change the maxN to a value that will 
