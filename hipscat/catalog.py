@@ -104,7 +104,7 @@ class Catalog():
             for mo in mapped_dict:
                 mapped_pixels = mapped_dict[mo]
                 for mp in mapped_pixels:
-                    cat_path = os.path.join(self.output_dir, 'catalog', lsd2_io.HIPSCAT_DIR_STRUCTURE.format(mo, mp, 'catalog'))
+                    cat_path = os.path.join(self.output_dir, 'catalog', lsd2_io.get_hipscat_pixel_file(mo, mp))
                     cone_search_map.append(cat_path)
 
         #only need a catalog once, remove duplicates

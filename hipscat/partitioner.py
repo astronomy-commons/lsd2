@@ -303,23 +303,15 @@ class Partitioner():
         neigbor_pix_directories = []
         hips_structure = {}
         for k_dir in orders:
-            #HACK
-            #k = int(k_dir.split('Norder')[1])
             k = int(k_dir.split('Norder=')[1])
             hips_structure[k] = []
 
-            #HACK
-            #npixs = os.listdir(os.path.join(self.output_dir, k_dir))
             npixs = os.listdir(os.path.join(cat_output_dir, k_dir))
             npixs = [x for x in npixs if 'Npix' in x]
             for pix_dir in npixs:
-                #HACK
-                #pix = int(pix_dir.split('Npix')[1])
                 pix = int(pix_dir.split('Npix=')[1])
                 hips_structure[k].append(pix)
 
-                #HACK
-                #pix_directories.append(os.path.join(self.output_dir, k_dir, pix_dir))
                 catpath = os.path.join(cat_output_dir, k_dir, pix_dir)
                 if os.path.exists(catpath):
                     cat_pix_directories.append(catpath)

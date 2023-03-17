@@ -120,7 +120,7 @@ partitioner.run(client=client)
 
 When this runs, it will create directories in the specified `location` parameter in the catalog instantiation above: 
 * `cache`: here it will save the source catalogs for faster partitioning if the process needs to be re-ran.
-* `catname/catalog`: here is where it writes the partitioned structure based on the spatial healpix ordering and source density (defined by the `threshold` parameter) along with neighbor margin sources for accurate cross-matches between hipscats. The partitioned structure will follow as an example:
+* `catname/catalog`: here is where it writes the partitioned structure based on the spatial healpix ordering and source density (defined by the `threshold` parameter). The partitioned structure will follow as an example:
 ```bash
 _metadata
 _common_metadata
@@ -194,7 +194,7 @@ client=Client(n_workers=12, threads_per_worker=1)
 c1 = hc.Catalog('sdss', location='/path/to/hips/catalog/outputdir')
 c2 = hc.Catalog(
   'gaia', 
-  location='abfs://sdss.dfs.core.windows.net/hipscat/', 
+  location='abfs://bucket.dfs.core.windows.net/hipscat/', 
   storage_options={
     'account_name' : '...', 
     'tenant_id'    : '...',
@@ -227,7 +227,7 @@ r2 = result.assign( #create a new column from the result
 r3 = result.assign( #create a new column from the result
   pm=lambda x: np.sqrt(x['gaia.pmra']**2 + x['gaia.pmdec']**2)
 ).query( #filter the result 
-  'pm > 1.0' #prefixed column names must be surrounded by backticks. i.e `gaia.pmdec` > 10
+  'pm > 1.0' #prefixed column names must be surrounded by backticks. i.e `gaia.pmdec` > 10. See example notebook
 ).to_parquet( #write the result to a parquet file
   "path/to/my/parquet/"
 ).compute() 

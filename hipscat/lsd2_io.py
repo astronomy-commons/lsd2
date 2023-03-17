@@ -83,6 +83,48 @@ def _map_pandas_read_parq(path, columns, engine, storage_options=None):
     return df
 
 
+def get_norder_npix_from_catdir(pathway):
+    '''
+        gets order, pix from pathway like:
+        '/path/to/dir/Norder=N/Dir=D/Npix=N.parquet
+    '''
+    if pathway[-1] == '/':
+        pathway = pathway[len(pathway)-1]
+    norder = int(pathway.split('Norder=')[1].split('/')[0])
+    npix = int(pathway.split('Npix=')[1].split('.parquet')[0])
+    return norder, npix
+
+
+def get_norder_npix_from_tmpdir(pathway):
+    '''
+        gets order, pix from pathway like:
+        '/path/to/dir/Norder=N/Npix=/catalog.parquet
+    '''
+    if pathway[-1] == '/':
+        pathway = pathway[len(pathway)-1]
+    norder = int(pathway.split('Norder=')[1].split('/')[0])
+    npix = int(pathway.split('Npix=')[1].split('/')[0])
+    return norder, npix
+
+
+def get_hipscat_pixel_dir(norder, npix):
+    '''
+        returns the path to the directory
+        /Norder=N/Dir=D/Npix=N.parquet format
+    '''
+    ndir = int(npix / 10_000) * 10_000
+    return f"Norder={norder}/Dir={ndir}"
+
+
+def get_hipscat_pixel_file(norder, npix):
+    '''
+        returns the path to the npix file under the
+        /Norder=N/Dir=D/Npix=N.parquet format
+    '''
+    ndir = int(npix / 10_000) * 10_000
+    return f"Norder={norder}/Dir={ndir}/Npix={npix}.parquet"
+
+
 def read_hipsmeta_file(pathway, storage_options=None):
     '''
     Finds the hipscat json metadata file
@@ -201,16 +243,12 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
     parquet_meta_file = read_parquet_metadata(
         os.path.join(catalog_path, hipsdir), storage_options
     )
-    meta = []
-    reorder_columns = [] if columns is not None else None
-    for c in parquet_meta_file.pandas_metadata["columns"]:
-        if columns is not None and c['name'] != '_ID':
-            if c['name'] in columns:
-                meta.append((c["name"], c["pandas_type"]))
-                reorder_columns.append(c['name'])
-        elif c['name'] != '_ID':
-            meta.append((c["name"], c["pandas_type"]))
 
+    meta = []
+    empty_table = parquet_meta_file.empty_table()
+    meta = empty_table.to_pandas()
+    if columns is not None:
+        meta = meta[columns]
 
     if source == 'local':
 
@@ -222,7 +260,7 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
             if not file_exists(pathway):
                 raise FileNotFoundError(f"pathway to parquet file: {pathway} does not exist")
             
-            return pd.read_parquet(pathway, columns=reorder_columns, engine=engine)
+            return pd.read_parquet(pathway, columns=columns, engine=engine)
         
         if library == 'dask':
             if isinstance(pathway, list):
@@ -234,13 +272,14 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
                 paths = []
                 for k in meta_hips.keys():
                     for pixs in meta_hips[k]:
-                        glob_cat_paths = HIPSCAT_DIR_STRUCTURE.format(k, pixs, hipsdir)
+                        #glob_cat_paths = HIPSCAT_DIR_STRUCTURE.format(k, pixs, hipsdir)
+                        glob_cat_paths = get_hipscat_pixel_file(k, pixs)
                         paths.append(os.path.join(pathway, hipsdir, glob_cat_paths))
                     
             return dd.from_map(
                 _map_pandas_read_parq, 
                 paths, 
-                [reorder_columns]*len(paths), 
+                [columns]*len(paths), 
                 [engine]*len(paths), 
                 meta=meta
             )
@@ -258,7 +297,7 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
             if 'account_name' in _config.keys():
                 _config.pop('account_name')
 
-            return pd.read_parquet(pathway, columns=reorder_columns, engine=engine, storage_options=_config)
+            return pd.read_parquet(pathway, columns=columns, engine=engine, storage_options=_config)
         
         if library == 'dask':
             if isinstance(pathway, list):
@@ -270,7 +309,8 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
                 paths = []
                 for k in meta_hips.keys():
                     for pixs in meta_hips[k]:
-                        glob_cat_paths = HIPSCAT_DIR_STRUCTURE.format(k, pixs, hipsdir)
+                        #glob_cat_paths = HIPSCAT_DIR_STRUCTURE.format(k, pixs, hipsdir)
+                        glob_cat_paths = get_hipscat_pixel_file(k, pixs)
                         paths.append(os.path.join(pathway, hipsdir, glob_cat_paths))
                     
             if 'account_name' in _config.keys():
@@ -279,7 +319,7 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
             return dd.from_map(
                 _map_pandas_read_parq, 
                 paths, 
-                [reorder_columns]*len(paths), 
+                [columns]*len(paths), 
                 [engine]*len(paths),
                 [_config]*len(paths), 
                 meta=meta

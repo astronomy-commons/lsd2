@@ -171,9 +171,9 @@ def map_catalog_hips(cat1_hips, cat1_outputdir, cat2_hips, cat2_outputdir, debug
                 mapped_pixels = mapped_dict[mo]
                 for mp in mapped_pixels:
                     c1_cat_path = os.path.join(cat1_outputdir, 'catalog',
-                                               lsd2_io.HIPSCAT_DIR_STRUCTURE.format(o, p, 'catalog'))
+                                               lsd2_io.get_hipscat_pixel_file(o, p))
                     c2_cat_path = os.path.join(cat2_outputdir, 'catalog',
-                                               lsd2_io.HIPSCAT_DIR_STRUCTURE.format(mo, mp, 'catalog'))
+                                               lsd2_io.get_hipscat_pixel_file(mo, mp))
                     res = [c1_cat_path, c2_cat_path]
                     if res not in ret:
                         ret.append([c1_cat_path, c2_cat_path])
@@ -223,20 +223,13 @@ def gc_dist(lon1, lat1, lon2, lat2):
     return np.degrees(2*np.arcsin(np.sqrt( (np.sin((lat1-lat2)*0.5))**2 + np.cos(lat1)*np.cos(lat2)*(np.sin((lon1-lon2)*0.5))**2 )))
 
 
-def which_cull_and_pixorder(c1, c2):
+def which_order_pix(c1, c2):
     '''
         c1 and c2 are string pathways to two catalog.parquet files
-
-        the logic here is that if the size of one pixel is
-        greater than the other, then there is no need to retain 
-        sources in the larger pixel. I.E if an order is greater, then 
-        flag that catalog to be culled to the smaller order
     '''
 
-    c1_order = int(c1.split('Norder=')[1].split('/')[0])
-    c1_pix = int(c1.split('Npix=')[1].split('/')[0])
-    c2_order = int(c2.split('Norder=')[1].split('/')[0])
-    c2_pix = int(c2.split('Npix=')[1].split('/')[0])    
+    c1_order, c1_pix = lsd2_io.get_norder_npix_from_catdir(c1)
+    c2_order, c2_pix = lsd2_io.get_norder_npix_from_catdir(c2)   
 
     if c2_order > c1_order:
         order, pix = c2_order, c2_pix
@@ -260,13 +253,12 @@ def xmatchmap_dict(hp_match_map):
     '''
     c1, c2 = [], []
     o, p, = [], []
-    #tc1, tc2 = [], []
 
     for m in hp_match_map:
         c1.append(m[0])
         c2.append(m[1])
         
-        order, pix = which_cull_and_pixorder(m[0], m[1])
+        order, pix = which_order_pix(m[0], m[1])
 
         o.append(order)
         p.append(pix)
