@@ -272,7 +272,6 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
                 paths = []
                 for k in meta_hips.keys():
                     for pixs in meta_hips[k]:
-                        #glob_cat_paths = HIPSCAT_DIR_STRUCTURE.format(k, pixs, hipsdir)
                         glob_cat_paths = get_hipscat_pixel_file(k, pixs)
                         paths.append(os.path.join(pathway, hipsdir, glob_cat_paths))
                     
@@ -286,6 +285,9 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
         
     if source == 'azure':
         
+        if _config and 'account_name' in _config.keys():
+            _config.pop('account_name')
+
         if library == 'pandas':
             if isinstance(pathway, list):
                 raise Exception("if loading a list of parquet files, use `library=dask`")
@@ -293,9 +295,6 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
                 raise Exception("pandas should only be used to load one parquet file, not a directory")
             if not file_exists(pathway, storage_options):
                 raise FileNotFoundError(f"pathway to parquet file: {pathway} does not exist")
-
-            if 'account_name' in _config.keys():
-                _config.pop('account_name')
 
             return pd.read_parquet(pathway, columns=columns, engine=engine, storage_options=_config)
         
@@ -309,13 +308,9 @@ def read_parquet(pathway, library='pandas', engine='pyarrow', hipsdir='catalog',
                 paths = []
                 for k in meta_hips.keys():
                     for pixs in meta_hips[k]:
-                        #glob_cat_paths = HIPSCAT_DIR_STRUCTURE.format(k, pixs, hipsdir)
                         glob_cat_paths = get_hipscat_pixel_file(k, pixs)
                         paths.append(os.path.join(pathway, hipsdir, glob_cat_paths))
-                    
-            if 'account_name' in _config.keys():
-                _config.pop('account_name')
-
+        
             return dd.from_map(
                 _map_pandas_read_parq, 
                 paths, 
