@@ -6,6 +6,7 @@ import numpy as np
 import healpy as hp
 
 from astropy.coordinates import SkyCoord
+from astropy import units as u
 from regions import PixCoord, PolygonSkyRegion, PolygonPixelRegion
 import astropy.wcs as world_coordinate_system
 
@@ -230,9 +231,9 @@ def get_margin_bounds_and_wcs(k, pix, scale, step=10):
     for i in range(len(transformed_bounding_box[1])):
         dec = transformed_bounding_box[1][i]
         if dec > 90.:
-            transformed_bounding_box[1][i] = 90. - (dec - 90.)
+            transformed_bounding_box[1][i] = 90.
         elif dec < -90.:
-            transformed_bounding_box[1][i] = -90. - (dec + 90.)
+            transformed_bounding_box[1][i] = -90.
 
 
     min_ra = np.min(transformed_bounding_box[0])
@@ -307,3 +308,79 @@ def check_margin_bounds(ra, dec, poly_and_wcs):
         vals = p.contains(pcs)
         bound_vals.append(vals)
     return np.array(bound_vals).any(axis=0)
+
+def check_polar_margin_bounds(ra, dec, order, pix, highest_k, pole, margin_threshold, step=1000):
+    part_pix_res = hp.nside2resol(2**order)
+    marg_pix_res = hp.nside2resol(2**highest_k)
+
+    # get the approximate number of boundary samples to cover a highest_k pixel
+    # on the boundary of the main pixel
+    boundary_range = int((marg_pix_res / part_pix_res) * step)
+    pixel_boundaries = hp.vec2dir(hp.boundaries(2**order, pix, step=step, nest=True), lonlat=True)
+
+    if pole == "North":
+        end = len(pixel_boundaries[0])
+        east_ra = pixel_boundaries[0][0:boundary_range+1]
+        east_dec = pixel_boundaries[1][0:boundary_range+1]
+
+        west_ra = pixel_boundaries[0][end-boundary_range:end]
+        west_dec = pixel_boundaries[1][end-boundary_range:end]
+
+        bound_ra = np.concatenate((east_ra, west_ra), axis=None)
+        bound_dec = np.concatenate((east_dec, west_dec), axis=None)
+        polar_bounaries = np.array([bound_ra, bound_dec])
+    else:
+        start = (2 * step) - boundary_range
+        end = (2 * step) + boundary_range + 1
+        south_ra = pixel_boundaries[0][start:end]
+        south_dec = pixel_boundaries[1][start:end]
+        polar_bounaries = np.array([south_ra, south_dec])
+
+    # healpy.boundaries sometimes returns dec values greater than 90, especially
+    # when taking many samples...
+    for i in range(len(polar_bounaries[1])):
+        d = polar_bounaries[1][i]
+        if d > 90.:
+            polar_bounaries[1][i] = 90.
+        elif d < -90.:
+            polar_bounaries[1][i] = -90.
+
+    sky_coords = SkyCoord(ra, dec, unit='deg')
+
+    checks = []
+    for i in range(len(polar_bounaries[0])):
+        lon = polar_bounaries[0][i]
+        lat = polar_bounaries[1][i]
+        bound_coord = SkyCoord(lon, lat, unit='deg')
+
+        ang_dist = bound_coord.separation(sky_coords)
+        checks.append(ang_dist <= margin_threshold*u.deg)
+
+    return np.array(checks).any(axis=0)
+
+def is_polar(order, pix):
+    # determines whether or not a a given pixel is one of the polar pixels
+    nside = hp.order2nside(order)
+    npix = hp.nside2npix(nside)
+    ring_pix = hp.nest2ring(nside, pix)
+
+    # in the ring numbering scheme, the first and last 4 pixels are the poles.
+    if ring_pix <= 3:
+        return (True, 'North')
+    elif ring_pix >= npix - 4:
+        return (True, 'South')
+    return (False, '')
+
+def get_truncated_pixels(order, pix, highest_k, pole):
+    # get the polar pixels that will be affected by truncating the declination
+    # for the margin regions. the affected pixels will also be polar pixels.
+    margins = get_margin(order, pix, highest_k - order)
+
+    truncs = []
+
+    for margin_pix in margins:
+        ip, p = is_polar(highest_k, margin_pix)
+        if ip and p == pole:
+            truncs.append(margin_pix)
+
+    return truncs

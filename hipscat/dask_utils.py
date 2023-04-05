@@ -92,6 +92,7 @@ def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, 
         base_filename=base_filename, 
         ra_kw=ra_kw, 
         dec_kw=dec_kw,
+        highest_k=highest_k,
         margin_threshold=margin_threshold
     )
 
@@ -228,7 +229,7 @@ def _to_hips(df, hipsPath, base_filename):
     # return the number of records written
     return len(df)
 
-def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, margin_threshold=0.1):
+def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, highest_k, margin_threshold):
     # WARNING: only to be used from df2hips(); it's defined out here just for debugging
     # convenience.
 
@@ -245,7 +246,37 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, margin_thresh
     # create the rough boundaries of the threshold bounding region.
     bounding_polygons = margin_utils.get_margin_bounds_and_wcs(k, pix, scale)
 
-    df['margin_check'] = margin_utils.check_margin_bounds(df[ra_kw].values, df[dec_kw].values, bounding_polygons)
+    is_polar, pole = margin_utils.is_polar(k, pix)
+
+    if is_polar:
+        trunc_pix = margin_utils.get_truncated_pixels(k, pix, highest_k, pole)
+        df['is_trunc'] = np.isin(df['margin_pix'], trunc_pix)
+
+        trunc_data = df.loc[df['is_trunc'] == True]
+        other_data = df.loc[df['is_trunc'] == False]
+
+        trunc_data['margin_check'] = margin_utils.check_polar_margin_bounds(
+            trunc_data[ra_kw].values,
+            trunc_data[dec_kw].values,
+            k,
+            pix,
+            highest_k,
+            pole,
+            margin_threshold
+        )
+        other_data['margin_check'] = margin_utils.check_margin_bounds(
+            other_data[ra_kw].values, 
+            other_data[dec_kw].values, 
+            bounding_polygons
+        )
+
+        df = pd.concat([trunc_data, other_data])
+    else:
+        df['margin_check'] = margin_utils.check_margin_bounds(
+            df[ra_kw].values, 
+            df[dec_kw].values, 
+            bounding_polygons
+        )
 
     margin_df = df.loc[df['margin_check'] == True]
 
