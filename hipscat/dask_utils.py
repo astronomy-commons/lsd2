@@ -19,8 +19,10 @@ from sklearn.neighbors import KDTree
 
 try:
     from . import util
+    from . import lsd2_io
 except ImportError:
     import util
+    import lsd2_io
 
 from . import margin_utils
 
@@ -69,11 +71,19 @@ def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw, skipro
     return img
 
 
-def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, dec_kw, id_kw, neighbor_pix, highest_k, margin_threshold):
+def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, dec_kw, id_kw, neighbor_pix, highest_k, margin_threshold, calculate_neighbors, verbose=False):
+
+    #order_kw = 'hips_k'
+    #pix_kw = 'hips_pix'
+    #HACK
+    order_kw = 'Norder'
+    pix_kw = 'Npix'
+    dir_kw = 'Dir'
 
     base_filename = os.path.basename(url).split('.')[0]
     parqFn = os.path.join(cache_dir, base_filename + '.parquet')
     df = pd.read_parquet(parqFn, engine='pyarrow')
+    df['tmp_uniq'] = np.arange(len(df))
 
     #hack if there isn't a header
     if all([isinstance(x, int) for x in [ra_kw, dec_kw, id_kw]]):
@@ -81,37 +91,53 @@ def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, 
         dec_kw = df.keys()[dec_kw]
         id_kw = df.keys()[id_kw]
 
-    # write the margin data
-    df['margin_pix'] = hp.ang2pix(2**highest_k, df[ra_kw].values, df[dec_kw].values, lonlat=True, nest=True)
+    if calculate_neighbors:
+        # write the margin data
+        df['margin_pix'] = hp.ang2pix(2**highest_k, df[ra_kw].values, df[dec_kw].values, lonlat=True, nest=True)
+        
+        neighbor_cache_df = df.merge(neighbor_pix, on='margin_pix')
+        neighbor_cache_df[dir_kw] = (neighbor_cache_df['part_pix'] / 10_000) * 10_000
 
-    neighbor_cache_df = df.merge(neighbor_pix, on='margin_pix')
+        convert_dict = {
+            'part_pix': np.int32,
+            'part_order': np.int32,
+            dir_kw : np.int32
+        }
+        neighbor_cache_df = neighbor_cache_df.astype(convert_dict)
 
-    res = neighbor_cache_df.groupby(['part_pix', 'part_order']).apply(
-        _to_neighbor_cache, 
-        hipsPath=output_dir, 
-        base_filename=base_filename, 
-        ra_kw=ra_kw, 
-        dec_kw=dec_kw,
-        highest_k=highest_k,
-        margin_threshold=margin_threshold
-    )
+        res = neighbor_cache_df.groupby(['part_pix', 'part_order'], group_keys=False).apply(
+            _to_neighbor_cache, 
+            hipsPath=output_dir, 
+            base_filename=base_filename, 
+            ra_kw=ra_kw, 
+            dec_kw=dec_kw,
+            highest_k=highest_k,
+            margin_threshold=margin_threshold
+        )
 
-    del neighbor_cache_df
+        del neighbor_cache_df
 
     for k in orders:
-        df['hips_k'] = k
-        df['hips_pix'] = hp.ang2pix(2**k, df[ra_kw].values, df[dec_kw].values, lonlat=True, nest=True)
+        df[order_kw] = k
+        df[pix_kw] = hp.ang2pix(2**k, df[ra_kw].values, df[dec_kw].values, lonlat=True, nest=True)
+        df[dir_kw] = (df[pix_kw] / 10_000) * 10_000
 
-        order_df = df.loc[df['hips_pix'].isin(opix[k])]
+        convert_dict = {
+            order_kw: np.int32,
+            pix_kw: np.int32,
+            dir_kw: np.int32
+        }
+        df = df.astype(convert_dict)
+        order_df = df.loc[df[pix_kw].isin(opix[k])]
 
         #audit_counts[k].append(len(order_df))
 
         #reset the df so that it doesn't include the already partitioned sources
         # ~df['column_name'].isin(list) -> sources not in order_df sources
-        df = df.loc[~df[id_kw].isin(order_df[id_kw])]
+        df = df.loc[~df['tmp_uniq'].isin(order_df['tmp_uniq'])]
         
         #groups the sources in order_k pixels, then outputs them to the base_filename sources
-        ret = order_df.groupby(['hips_k', 'hips_pix']).apply(_to_hips, hipsPath=output_dir, base_filename=base_filename)
+        ret = order_df.groupby([order_kw, pix_kw], group_keys=False).apply(_to_hips, hipsPath=output_dir, base_filename=base_filename)
 
         del order_df
         if len(df) == 0:
@@ -120,114 +146,102 @@ def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, 
     return 0
 
 
-def _map_reduce(output_dir, ra_kw, dec_kw):
+def _map_reduce(tmp_pixel_dir, filename, ra_kw, dec_kw, dtypes, indexing_order=14):
     #print(output_dirs)
     #for output_dir in output_dirs:
+    '''
+        pixel_dir -> /path/to/catalog/Norder=N/Npix=P/[parquet_files]
+    '''
 
-    cat_dfs = []
-    files = os.listdir(os.path.join(output_dir))
+    catalog_dir = tmp_pixel_dir.split('Norder=')[0]
+    parq_files = os.listdir(os.path.join(tmp_pixel_dir))
 
-    #so it doesn't re-concatenate the original catalog, if partition isn't re-ran
-    catalog_files = list(filter(lambda f: len(f) > 15 and f[-15:] == 'catalog.parquet', files))
-    neighbor_files = list(filter(lambda f: len(f) > 16 and f[-16:] == 'neighbor.parquet', files))
+    #so it doesn't re-concatenate the original catalog/neighbor.parquet, if partition isn't re-ran
+    #parq_files = list(filter(lambda f: len(f) > len(filename) and f[-len(filename):] == filename, files))
 
-    if len(catalog_files) == 1:
-        fn = os.path.join(output_dir, catalog_files[0])
+    if len(parq_files) == 1:
+        fn = os.path.join(tmp_pixel_dir, parq_files[0])
+        norder, npix = lsd2_io.get_norder_npix_from_tmpdir(fn)
+
         df = pd.read_parquet(fn, engine='pyarrow')
-
-        df["_ID"] = util.compute_index(df[ra_kw].values, df[dec_kw].values, order=14)
+        df["_ID"] = util.compute_index(df[ra_kw].values, df[dec_kw].values, order=indexing_order)
         df.set_index("_ID", inplace=True)
         df.sort_index(inplace=True)
 
-        new_fn = os.path.join(output_dir, 'catalog.parquet')
-        df.to_parquet(new_fn)
+        if dtypes is not None:
+            df = df.astype(dtypes)
 
-        os.remove(fn)
-    else:
-        df_files = [os.path.join(output_dir, f) for f in catalog_files]
+        pixel_dir = lsd2_io.get_hipscat_pixel_dir(norder, npix)
+        os.makedirs(os.path.join(catalog_dir, pixel_dir), exist_ok=True)
+
+        pixel_file = lsd2_io.get_hipscat_pixel_file(norder, npix)
+        df.to_parquet(os.path.join(catalog_dir, pixel_file))
+        del df
+
+    if len(parq_files) > 1:
+        df_files = [os.path.join(tmp_pixel_dir, f) for f in parq_files]
+        norder, npix = lsd2_io.get_norder_npix_from_tmpdir(df_files[0])
+
         df = pd.concat(
-            [pd.read_parquet(parq_file)
+            [pd.read_parquet(parq_file, engine='pyarrow')
             for parq_file in df_files], sort=False
         )
-        df["_ID"] = util.compute_index(df[ra_kw].values, df[dec_kw].values, order=14)
+
+        df["_ID"] = util.compute_index(df[ra_kw].values, df[dec_kw].values, order=indexing_order)
         df.set_index("_ID", inplace=True)
         df.sort_index(inplace=True)
 
-        output_fn = os.path.join(output_dir, 'catalog.parquet')
-        df.to_parquet(output_fn)
-        for f in df_files:
-            os.remove(f)
+        if dtypes is not None:
+            df = df.astype(dtypes)
 
-    nsources = len(df)
-    #return {uniq:nsources}
-    del df
-    del cat_dfs
+        pixel_dir = lsd2_io.get_hipscat_pixel_dir(norder, npix)
+        os.makedirs(os.path.join(catalog_dir, pixel_dir), exist_ok=True)
 
-    nei_dfs = []
+        pixel_file = lsd2_io.get_hipscat_pixel_file(norder, npix)
+        df.to_parquet(os.path.join(catalog_dir, pixel_file))
+        del df
 
-    if len(neighbor_files) == 1:
-        fn = os.path.join(output_dir, neighbor_files[0])
-        df = pd.read_parquet(fn, engine='pyarrow')
-
-        df["_ID"] = util.compute_index(df[ra_kw].values, df[dec_kw].values, order=14)
-        df.set_index("_ID", inplace=True)
-        df.sort_index(inplace=True)
-
-        new_fn = os.path.join(output_dir, 'neighbor.parquet')
-        df.to_parquet(new_fn)
-        os.remove(fn)
-    else:
-        df_files = [os.path.join(output_dir, f) for f in neighbor_files]
-        df = pd.concat(
-            [pd.read_parquet(parq_file)
-            for parq_file in df_files], sort=False
-        )
-        df["_ID"] = util.compute_index(df[ra_kw].values, df[dec_kw].values, order=14)
-        df.set_index("_ID", inplace=True)
-        df.sort_index(inplace=True)
-
-        output_fn = os.path.join(output_dir, 'neighbor.parquet')
-        df.to_parquet(output_fn)
-        for f in df_files:
-            os.remove(f)
-
-    del df
-    del nei_dfs
-
+    os.system(f"rm -rf {tmp_pixel_dir}")
     return 0
 
 
 def _to_hips(df, hipsPath, base_filename):
+
+    #order_kw = 'hips_k'
+    #pix_kw = 'hips_pix'
+    #HACK
+    order_kw = 'Norder'
+    pix_kw = 'Npix'
     # WARNING: only to be used from df2hips(); it's defined out here just for debugging
     # convenience.
 
     # grab the order and pix number for this dataframe. Since this function
     # is intented to be called with apply() after running groupby on (k, pix), these must
     # be the same throughout the entire dataframe
-    output_parquet = True
-    k, pix = df['hips_k'].iloc[0],  df['hips_pix'].iloc[0]
-    assert (df['hips_k']   ==   k).all()
-    assert (df['hips_pix'] == pix).all()
+    k = df[order_kw].iloc[0]
+    pix = df[pix_kw].iloc[0]
+    
+    assert (df[order_kw]   ==   k).all()
+    assert (df[pix_kw] == pix).all()
 
     # construct the output directory and filename
-    dir = os.path.join(hipsPath, f'Norder{k}/Npix{pix}')
-    if output_parquet:
-        fn  = os.path.join(dir, f'{base_filename}_catalog.parquet')
-    else:
-        fn  = os.path.join(dir, f'{base_filename}_catalog.csv')
+    #HACK
+    #dir = os.path.join(hipsPath, f'Norder{k}/Npix{pix}')
+    dir = os.path.join(hipsPath, f'catalog/Norder={k}/Npix={pix}')
+    fn  = os.path.join(dir, f'{base_filename}_catalog.parquet')
 
     # create dir if it doesn't exist
     os.makedirs(dir, exist_ok=True)
 
     # write to the file (append if it already exists)
     # also, write the header only if the file doesn't already exist
-    if output_parquet:
-        df.to_parquet(fn)
-    else:
-        df.to_csv(fn, mode='a', index=False, header=not os.path.exists(fn))
+    drop_columns=['tmp_uniq','margin_pix'] #, 'hips_k', 'hips_pix']
+    df = df.drop(columns=drop_columns, axis=1)
+    df.to_parquet(fn)
 
     # return the number of records written
-    return len(df)
+    del df
+    return 0
 
 def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, highest_k, margin_threshold):
     # WARNING: only to be used from df2hips(); it's defined out here just for debugging
@@ -236,7 +250,6 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, highest_k, ma
     # grab the order and pix number for this dataframe. Since this function
     # is intented to be called with apply() after running groupby on (k, pix), these must
     # be the same throughout the entire dataframe
-    output_parquet = True
     k, pix = df['part_order'].iloc[0],  df['part_pix'].iloc[0]
     assert (df['part_pix'] == pix).all()
     assert (df['part_order']   ==   k).all()
@@ -280,98 +293,41 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, highest_k, ma
 
     margin_df = df.loc[df['margin_check'] == True]
 
-    # construct the output directory and filename
-    dir = os.path.join(hipsPath, f'Norder{k}/Npix{pix}')
-    if output_parquet:
+    if len(margin_df):
+        # construct the output directory and filename
+        dir = os.path.join(hipsPath, f'neighbor/Norder={k}/Npix={pix}')
         fn  = os.path.join(dir, f'{base_filename}_neighbor.parquet')
-    else:
-        fn  = os.path.join(dir, f'{base_filename}_neighbor.csv')
+        # create dir if it doesn't exist
+        os.makedirs(dir, exist_ok=True)
 
-    # create dir if it doesn't exist
-    os.makedirs(dir, exist_ok=True)
-
-    # write to the file (append if it already exists)
-    # also, write the header only if the file doesn't already exist
-    if output_parquet:
+        # write to the file (append if it already exists)
+        # also, write the header only if the file doesn't already exist
+        rename_dict = {
+            'part_pix' : 'Npix',
+            'part_order' : 'Norder'
+        }
+        drop_columns=['tmp_uniq','margin_pix', 'margin_check']
+        margin_df = margin_df.drop(columns=drop_columns, axis=1).rename(rename_dict, axis=1)
         margin_df.to_parquet(fn)
+
+        # return the number of records written
+        del df, margin_df
+        return 0
     else:
-        margin_df.to_csv(fn, mode='a', index=False, header=not os.path.exists(fn))
-
-    # return the number of records written
-    return len(df)
-
-def _cross_match2(match_cats, c1_md, c2_md, c1_cols=[], c2_cols=[],  n_neighbors=1, dthresh=0.01):
-
-    c1 = match_cats[0]
-    c2 = match_cats[1]
-
-    c1_order = int(c1.split('Norder')[1].split('/')[0])
-    c1_pix = int(c1.split('Npix')[1].split('/')[0])
-    c2_order = int(c2.split('Norder')[1].split('/')[0])
-    c2_pix = int(c2.split('Npix')[1].split('/')[0])
-
-    c1_df = pd.read_parquet(c1, engine='pyarrow')
-    c2_df = pd.read_parquet(c2, engine='pyarrow')
-
-    tocull1 = False
-    tocull2 = False
-
-    if c2_order > c1_order:
-        order, pix = c2_order, c2_pix
-        tocull1=True
-    else:
-        order, pix = c1_order, c1_pix
-        tocull2=True
-
-    (clon, clat) = hp.pix2ang(hp.order2nside(order), pix, nest=True, lonlat=True)
-
-    c1_df = util.frame_cull(
-        df=c1_df, df_md=c1_md,
-        order=order, pix=pix,
-        cols=c1_cols,
-        tocull=tocull1
-    )
-
-    c2_df = util.frame_cull(
-        df=c2_df, df_md=c2_md,
-        order=order, pix=pix,
-        cols=c2_cols,
-        tocull=tocull2
-    )
-
-    ret = pd.DataFrame()
-    if len(c1_df) and len(c2_df):
-
-        xy1 = util.frame_gnomonic(c1_df, c1_md, clon, clat)
-        xy2 = util.frame_gnomonic(c2_df, c2_md, clon, clat)
-
-        tree = KDTree(xy2, leaf_size=2)
-        dists, inds = tree.query(xy1, k=n_neighbors)
-
-        outIdx = np.arange(len(c1_df)*n_neighbors)
-        leftIdx = outIdx // n_neighbors
-        rightIdx = inds.ravel()
-        out = pd.concat(
-            [
-                c1_df.iloc[leftIdx].reset_index(drop=True),   # select the rows of the left table
-                c2_df.iloc[rightIdx].reset_index(drop=True)  # select the rows of the right table
-            ], axis=1)  # concat the two tables "horizontally" (i.e., join columns, not append rows)
-
-        out["_DIST"] = util.gc_dist(
-            out[c1_md['ra_kw']], out[c1_md['dec_kw']],
-            out[c2_md['ra_kw']], out[c2_md['dec_kw']]
-        )
-
-        ret = out.loc[out['_DIST'] < dthresh]
-        #out = out.loc[out['_DIST'] < dthresh]
-        #ret = len(out)
-
-        del out, dists, inds, outIdx, leftIdx, rightIdx, xy1, xy2
-    del c1_df, c2_df
-    return ret
+        del df, margin_df
+        return 0
 
 
-def cone_search_from_daskdf(df, c_md, ra, dec, radius, columns=None):
+def _check_margin_bounds(ra, dec, pixel_region):
+    res = []
+    for i in range(len(ra)):
+        sc = PixCoord(x=ra[i], y=dec[i])
+        in_bounds = pixel_region.contains(sc)
+        res.append(in_bounds)
+    return res
+
+
+def cone_search_from_daskdf(df, c_md, ra, dec, radius, columns=None, storage_options=None):
     '''
     mapped function for calculating the number of sources
     in a disc at position (ra, dec) at radius (radius).
@@ -395,11 +351,7 @@ def cone_search_from_daskdf(df, c_md, ra, dec, radius, columns=None):
 
     for catalog in vals:
         #try:
-        df = pd.read_parquet(
-            catalog, 
-            engine='pyarrow',
-            columns=columns
-        )
+        df = lsd2_io.read_parquet(catalog, 'pandas', columns=columns, storage_options=storage_options)
         df["_DIST"]=util.gc_dist(
                 df[c_md['ra_kw']], df[c_md['dec_kw']], ra, dec
         )
@@ -412,28 +364,21 @@ def cone_search_from_daskdf(df, c_md, ra, dec, radius, columns=None):
     return pd.concat(retdfs)
 
 
-def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01, evaluate_margins=True):
+def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01, evaluate_margins=True, storage_options=None):
     '''
     mapped function for calculating a cross_match between a partitioned dataframe
-     with columns [C1, C2, Order, Pix, ToCull1, ToCull2]
+     with columns [C1, C2, Order, Pix]
         C1 is the pathway to the catalog1.parquet file
         C2 is the pathway to the catalog2.parquet file
         Order is the healpix order
         Pix is the healpix pixel at the order for the calculation
-        ToCull1 is a boolean which represents the original C1 file's healpix order >
-            than C2, thus the number of sources is potentiall 4 times greater than
-            the number of sources in C2. We can optimize the comparison calculation
-            by culling the sources from C1 that aren't in C2's order/pixel
-        ToCull2 the same as ToCull1, but C2 order > C1
     '''
 
     vals = zip(
         df['C1'],
         df['C2'],
         df['Order'],
-        df['Pix'],
-        df['ToCull1'],
-        df['ToCull2']
+        df['Pix']
     )
 
     #get the column names for the returning dataframe
@@ -454,57 +399,38 @@ def xmatch_from_daskdf(df, all_column_dict, n_neighbors=1, dthresh=0.01, evaluat
     #iterate over the partitioned dataframe
     #in theory, this should be just one dataframe
     # TODO: ensure that this just one entry in df, and remove the forloop
-    for c1, c2, order, pix, tocull1, tocull2 in vals:
+    for c1, c2, order, pix in vals:
         
         #implement neighbors into xmatch routine
         # exists at the same path as c1/c2, 
         # just has neighbor instead of catalog in the filename
-        n1 = c1.split('catalog.parquet')[0]+'neighbor.parquet'
-        n2 = c1.split('catalog.parquet')[0]+'neighbor.parquet'
-
+        # We should only consider neighbors margins from cat2 - SW 02/16/2023
+        
+        #c2 = /some/path/hipscat/catalog/Norder=N/Dir=D/Npix=N.parquet
+        #c2_split = ['/some/path/hipscat', 'Norder=N/Dir=D/Npix=N.parquet']
+        #n2 = '/some/path/hipscat/neighbor/Norder=N/Dir=D/Npix=N.parquet' :)
+        c2_split = c2.split('/catalog/')
+        n2 = os.path.join(c2_split[0], 'neighbor', c2_split[1])
+        
         # read the cat1_df while culling appropriate columns
-        cat1_df = pd.read_parquet(c1, columns=all_column_dict['c1_cols_original'], engine='pyarrow')
-        # if a neighbor file exists
-        if (os.path.exists(n1) and evaluate_margins):
-            # read
-            n1_df = pd.read_parquet(n1, columns=all_column_dict['c1_cols_original'], engine='pyarrow')
-            # and concatenate
-            c1_df = pd.concat([cat1_df, n1_df])
-        else:
-            c1_df = cat1_df
-        # rename the columns with appropriate prefixes
+        c1_df = lsd2_io.read_parquet(c1, 'pandas', columns=all_column_dict['c1_cols_original'], storage_options=storage_options)
         c1_df.columns = all_column_dict['c1_cols_prefixed']
 
-        # same process for cat2... rinse repeat
-        cat2_df = pd.read_parquet(c2, columns=all_column_dict['c2_cols_original'], engine='pyarrow')
-        if (os.path.exists(n2) and evaluate_margins):
-            n2_df = pd.read_parquet(n1, columns=all_column_dict['c2_cols_original'], engine='pyarrow')
+        #cat2_df = pd.read_parquet(c2, columns=all_column_dict['c2_cols_original'], engine='pyarrow')
+        cat2_df = lsd2_io.read_parquet(c2, 'pandas', columns=all_column_dict['c2_cols_original'], storage_options=storage_options)
+        # if a neighbor file exists
+        if (lsd2_io.file_exists(n2) and evaluate_margins):
+            # read
+            n2_df = lsd2_io.read_parquet(n2, 'pandas', hipsdir='neighbor', columns=all_column_dict['c2_cols_original'], storage_options=storage_options)
+            # and concatenate
             c2_df = pd.concat([cat2_df, n2_df])
         else:
             c2_df = cat2_df
+        # rename the columns with appropriate prefixes
         c2_df.columns = all_column_dict['c2_cols_prefixed']
-
-        #if c1 and c2 columnames have the same column names
-        # append a suffix _2 to the second catalog
-        #c2_md = util.cmd_rename_kws(c2_cols, c2_md)
-        #c2_df = util.frame_rename_cols(c2_df, cols=c2_cols)
 
         #get the center lon/lat of the healpix pixel
         (clon, clat) = hp.pix2ang(hp.order2nside(order), pix, nest=True, lonlat=True)
-
-        # Commenting out since it will effectively negate neighbors -SW 02/07/2023
-        #cull the catalog dataframes based on ToCull=True/False
-        #if tocull1:
-        #    c1_df = util.frame_cull(
-        #        df=c1_df, df_md=c1_md,
-        #        order=order, pix=pix
-        #    )
-
-        #if tocull2:
-        #    c2_df = util.frame_cull(
-        #        df=c2_df, df_md=c2_md,
-        #        order=order, pix=pix
-        #    )
         
         #Sometimes the c1_df or c2_df contain zero sources 
         # after culling

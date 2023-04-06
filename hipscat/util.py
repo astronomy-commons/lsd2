@@ -6,6 +6,10 @@ import json
 import os
 from bs4 import BeautifulSoup, SoupStrainer
 
+try:
+    from . import lsd2_io
+except ImportError:
+    import lsd2_io
 
 def compute_index(ra, dec, order=20):
     # the 64-bit index, viewed as a bit array, consists of two parts:
@@ -166,10 +170,10 @@ def map_catalog_hips(cat1_hips, cat1_outputdir, cat2_hips, cat2_outputdir, debug
             for mo in mapped_dict:
                 mapped_pixels = mapped_dict[mo]
                 for mp in mapped_pixels:
-                    c1_cat_path = os.path.join(cat1_outputdir, f'Norder{o}', f'Npix{p}',
-                                               'catalog.parquet')
-                    c2_cat_path = os.path.join(cat2_outputdir, f'Norder{mo}', f'Npix{mp}',
-                                               'catalog.parquet')
+                    c1_cat_path = os.path.join(cat1_outputdir, 'catalog',
+                                               lsd2_io.get_hipscat_pixel_file(o, p))
+                    c2_cat_path = os.path.join(cat2_outputdir, 'catalog',
+                                               lsd2_io.get_hipscat_pixel_file(mo, mp))
                     res = [c1_cat_path, c2_cat_path]
                     if res not in ret:
                         ret.append([c1_cat_path, c2_cat_path])
@@ -219,32 +223,20 @@ def gc_dist(lon1, lat1, lon2, lat2):
     return np.degrees(2*np.arcsin(np.sqrt( (np.sin((lat1-lat2)*0.5))**2 + np.cos(lat1)*np.cos(lat2)*(np.sin((lon1-lon2)*0.5))**2 )))
 
 
-def which_cull_and_pixorder(c1, c2):
+def which_order_pix(c1, c2):
     '''
         c1 and c2 are string pathways to two catalog.parquet files
-
-        the logic here is that if the size of one pixel is
-        greater than the other, then there is no need to retain 
-        sources in the larger pixel. I.E if an order is greater, then 
-        flag that catalog to be culled to the smaller order
     '''
 
-    c1_order = int(c1.split('Norder')[1].split('/')[0])
-    c1_pix = int(c1.split('Npix')[1].split('/')[0])
-    c2_order = int(c2.split('Norder')[1].split('/')[0])
-    c2_pix = int(c2.split('Npix')[1].split('/')[0])    
-
-    tocull1 = False
-    tocull2 = False
+    c1_order, c1_pix = lsd2_io.get_norder_npix_from_catdir(c1)
+    c2_order, c2_pix = lsd2_io.get_norder_npix_from_catdir(c2)   
 
     if c2_order > c1_order:
         order, pix = c2_order, c2_pix
-        tocull1=True
     else:
         order, pix = c1_order, c1_pix
-        tocull2=True
 
-    return order, pix, tocull1, tocull2
+    return order, pix
 
 
 def xmatchmap_dict(hp_match_map):
@@ -261,26 +253,21 @@ def xmatchmap_dict(hp_match_map):
     '''
     c1, c2 = [], []
     o, p, = [], []
-    tc1, tc2 = [], []
 
     for m in hp_match_map:
         c1.append(m[0])
         c2.append(m[1])
-
-        order, pix, tocull1, tocull2 = which_cull_and_pixorder(m[0], m[1])
+        
+        order, pix = which_order_pix(m[0], m[1])
 
         o.append(order)
         p.append(pix)
-        tc1.append(tocull1)
-        tc2.append(tocull2)
 
     data = {
             'C1': c1,
             'C2': c2,
             'Order' : o,
-            'Pix' : p,
-            'ToCull1': tc1,
-            'ToCull2': tc2
+            'Pix' : p
     }
 
     return data
@@ -294,7 +281,7 @@ def validate_user_input_cols(cols, cat_md):
         will read all columns
     '''
 
-    if len(cols):
+    if cols is not None and len(cols):
         expected_cols = [
             cat_md['ra_kw'],
             cat_md['dec_kw'],
@@ -384,7 +371,7 @@ def frame_gnomonic(df, df_md, clon, clat):
     return ret
 
 
-def get_csv_urls(url='https://cdn.gea.esac.esa.int/Gaia/gdr2/gaia_source/csv/', fmt='.csv.gz'):
+def get_cat_urls(url='https://cdn.gea.esac.esa.int/Gaia/gdr2/gaia_source/csv/', fmt='.csv.gz'):
     """
     This function parses the source url 'https://cdn.gea.esac.esa.int/Gaia/gdr2/gaia_source/csv/'
     for .csv.gz files and returns them as a list.

@@ -1,2 +1,2 @@
 
-export PYTHONPATH=$PWD/src:$PWD/hipscat:$PYTHONPATH
+export PYTHONPATH=$PWD/hipscat:$PYTHONPATH
