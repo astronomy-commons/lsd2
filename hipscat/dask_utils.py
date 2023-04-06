@@ -12,8 +12,6 @@ import dask.dataframe as dd
 import dask
 
 from astropy.table import Table
-from astropy.coordinates import SkyCoord
-from regions import PixCoord, PolygonSkyRegion, PolygonPixelRegion
 from functools import partial
 from dask.distributed import Client, progress
 from dask.delayed import delayed
@@ -25,6 +23,8 @@ try:
 except ImportError:
     import util
     import lsd2_io
+
+from . import margin_utils
 
 def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw, skiprows=None):
     # histogram the list of parts, and return it
@@ -71,7 +71,7 @@ def _gather_statistics_hpix_hist(parts, k, cache_dir, fmt, ra_kw, dec_kw, skipro
     return img
 
 
-def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, dec_kw, id_kw, neighbor_pix, highest_k, calculate_neighbors, verbose=False):
+def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, dec_kw, id_kw, neighbor_pix, highest_k, margin_threshold, calculate_neighbors, verbose=False):
 
     #order_kw = 'hips_k'
     #pix_kw = 'hips_pix'
@@ -105,7 +105,15 @@ def _write_partition_structure(url, cache_dir, output_dir, orders, opix, ra_kw, 
         }
         neighbor_cache_df = neighbor_cache_df.astype(convert_dict)
 
-        res = neighbor_cache_df.groupby(['part_pix', 'part_order'], group_keys=False).apply(_to_neighbor_cache, hipsPath=output_dir, base_filename=base_filename, ra_kw=ra_kw, dec_kw=dec_kw)
+        res = neighbor_cache_df.groupby(['part_pix', 'part_order'], group_keys=False).apply(
+            _to_neighbor_cache, 
+            hipsPath=output_dir, 
+            base_filename=base_filename, 
+            ra_kw=ra_kw, 
+            dec_kw=dec_kw,
+            highest_k=highest_k,
+            margin_threshold=margin_threshold
+        )
 
         del neighbor_cache_df
 
@@ -235,8 +243,7 @@ def _to_hips(df, hipsPath, base_filename):
     del df
     return 0
 
-
-def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
+def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw, highest_k, margin_threshold):
     # WARNING: only to be used from df2hips(); it's defined out here just for debugging
     # convenience.
 
@@ -247,20 +254,42 @@ def _to_neighbor_cache(df, hipsPath, base_filename, ra_kw, dec_kw):
     assert (df['part_pix'] == pix).all()
     assert (df['part_order']   ==   k).all()
 
-    resolution = hp.nside2resol(2**k, arcmin=True) / 60.
-    resolution_and_thresh = resolution + 0.1
-    scale = (resolution_and_thresh**2) / (resolution**2)
-    scale_matrix = np.array([[scale, 0],
-                            [0, scale]])
+    scale = margin_utils.get_margin_scale(k, margin_threshold)
 
     # create the rough boundaries of the threshold bounding region.
-    # TODO: create a scaling affine transform that will scale this region to cover the
-    # necessary threshold.
-    pixel_boundaries = hp.vec2ang(hp.boundaries(2**k, pix, nest=True), lonlat=True)
-    vertices = PixCoord(x=pixel_boundaries[0], y=pixel_boundaries[1])
-    pixel_region = PolygonPixelRegion(vertices=vertices)
+    bounding_polygons = margin_utils.get_margin_bounds_and_wcs(k, pix, scale)
 
-    df['margin_check'] = _check_margin_bounds(df[ra_kw].values, df[dec_kw].values, pixel_region)
+    is_polar, pole = margin_utils.is_polar(k, pix)
+
+    if is_polar:
+        trunc_pix = margin_utils.get_truncated_pixels(k, pix, highest_k, pole)
+        df['is_trunc'] = np.isin(df['margin_pix'], trunc_pix)
+
+        trunc_data = df.loc[df['is_trunc'] == True]
+        other_data = df.loc[df['is_trunc'] == False]
+
+        trunc_data['margin_check'] = margin_utils.check_polar_margin_bounds(
+            trunc_data[ra_kw].values,
+            trunc_data[dec_kw].values,
+            k,
+            pix,
+            highest_k,
+            pole,
+            margin_threshold
+        )
+        other_data['margin_check'] = margin_utils.check_margin_bounds(
+            other_data[ra_kw].values, 
+            other_data[dec_kw].values, 
+            bounding_polygons
+        )
+
+        df = pd.concat([trunc_data, other_data])
+    else:
+        df['margin_check'] = margin_utils.check_margin_bounds(
+            df[ra_kw].values, 
+            df[dec_kw].values, 
+            bounding_polygons
+        )
 
     margin_df = df.loc[df['margin_check'] == True]
 

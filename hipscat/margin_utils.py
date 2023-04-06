@@ -5,6 +5,11 @@
 import numpy as np
 import healpy as hp
 
+from astropy.coordinates import SkyCoord
+from astropy import units as u
+from regions import PixCoord, PolygonSkyRegion, PolygonPixelRegion
+import astropy.wcs as world_coordinate_system
+
 # see the documentation for get_edge() about this variable
 _edge_vectors = [
     np.asarray([1, 3]), # NE edge
@@ -192,3 +197,180 @@ def get_margin(kk, pix, dk):
     nb = list(get_edge(dk, px, edge) for edge, px in zip(which, n) if px != -1)
     nb = np.concatenate(nb)
     return nb
+
+def get_margin_scale(k, margin_threshold):
+    resolution = hp.nside2resol(2**k, arcmin=True) / 60.
+    resolution_and_thresh = resolution + (margin_threshold)
+    margin_area = resolution_and_thresh ** 2
+    pixel_area = hp.pixelfunc.nside2pixarea(2**k, degrees=True)
+    scale = margin_area / pixel_area
+    return scale
+
+def get_margin_bounds_and_wcs(k, pix, scale, step=10):
+    
+    pixel_boundaries = hp.vec2dir(hp.boundaries(2**k, pix, step=step, nest=True), lonlat=True)
+
+    n_samples = len(pixel_boundaries[0])
+    centroid_lon = np.sum(pixel_boundaries[0]) / n_samples
+    centroid_lat = np.sum(pixel_boundaries[1]) / n_samples
+    translate_lon = centroid_lon - (centroid_lon * scale)
+    translate_lat = centroid_lat - (centroid_lat * scale)
+
+    affine_matrix = np.array([[scale, 0, translate_lon],
+                              [0, scale, translate_lat],
+                              [0,     0,             1]])
+
+    homogeneous = np.ones((3, n_samples))
+    homogeneous[0] = pixel_boundaries[0]
+    homogeneous[1] = pixel_boundaries[1]
+
+    transformed_bounding_box = np.matmul(affine_matrix, homogeneous)
+
+    # if the transform places the declination of any points outside of
+    # the range 90 > dec > -90, change it to a proper dec value.
+    transformed_bounding_box[1] = np.clip(transformed_bounding_box[1], -90., 90.)
+
+
+    min_ra = np.min(transformed_bounding_box[0])
+    max_ra = np.max(transformed_bounding_box[0])
+    min_dec = np.min(transformed_bounding_box[1])
+    max_dec = np.max(transformed_bounding_box[1])
+
+    # one arcsecond
+    pix_size = 0.0002777777778
+
+    ra_naxis =int((max_ra - min_ra) / pix_size)
+    dec_naxis = int((max_dec - min_dec) / pix_size)
+
+    polygons = []
+    # for k < 2, the size of the bounding boxes breaks the regions
+    # code, so we subdivide the pixel into multiple parts with
+    # independent wcs.
+    if k < 2:
+        # k == 0 -> 16 subdivisions, k == 1 -> 4 subdivisions
+        divs = 4 ** (2 - k)
+        div_len = int((step * 4) / divs)
+        for i in range(divs):
+            j = i * div_len
+            lon = list(transformed_bounding_box[0][j:j+div_len+1])
+            lat = list(transformed_bounding_box[1][j:j+div_len+1])
+            
+            # in the last div, include the first data point
+            # to ensure that we cover the whole area
+            if i == divs - 1:
+                lon.append(transformed_bounding_box[0][0])
+                lat.append(transformed_bounding_box[1][0])
+
+            lon.append(centroid_lon)
+            lat.append(centroid_lat)
+
+            ra_axis = int(ra_naxis / (2 ** (2 - k)))
+            dec_axis = int(dec_naxis / (2 ** (2 - k)))
+
+            wcs_sub = world_coordinate_system.WCS(naxis=2)
+            wcs_sub.wcs.crpix = [1, 1]
+            wcs_sub.wcs.crval = [lon[0], lat[0]]
+            wcs_sub.wcs.cunit = ["deg", "deg"]
+            wcs_sub.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+            wcs_sub.wcs.cdelt = [pix_size, pix_size]
+            wcs_sub.array_shape = [ra_axis, dec_axis]
+
+            vertices = SkyCoord(lon, lat, unit='deg')
+            sky_region = PolygonSkyRegion(vertices=vertices)
+            polygons.append((sky_region.to_pixel(wcs_sub), wcs_sub))
+    else:
+        wcs_margin = world_coordinate_system.WCS(naxis=2)
+        wcs_margin.wcs.crpix = [1, 1]
+        wcs_margin.wcs.crval = [min_ra, min_dec]
+        wcs_margin.wcs.cunit = ["deg", "deg"]
+        wcs_margin.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        wcs_margin.wcs.cdelt = [pix_size, pix_size]
+        wcs_margin.array_shape = [ra_naxis, dec_naxis]
+
+        vertices = SkyCoord(transformed_bounding_box[0], transformed_bounding_box[1], unit='deg')
+        sky_region = PolygonSkyRegion(vertices=vertices)
+        polygon_region = sky_region.to_pixel(wcs_margin)
+        polygons = [(polygon_region, wcs_margin)]
+
+    return polygons
+
+def check_margin_bounds(ra, dec, poly_and_wcs):
+    sky_coords = SkyCoord(ra, dec, unit='deg')
+    bound_vals = []
+    for p, w in poly_and_wcs:
+        xv, yv = world_coordinate_system.utils.skycoord_to_pixel(sky_coords, w)
+        pcs = PixCoord(xv, yv)
+        vals = p.contains(pcs)
+        bound_vals.append(vals)
+    return np.array(bound_vals).any(axis=0)
+
+def check_polar_margin_bounds(ra, dec, order, pix, highest_k, pole, margin_threshold, step=1000):
+    part_pix_res = hp.nside2resol(2**order)
+    marg_pix_res = hp.nside2resol(2**highest_k)
+
+    # get the approximate number of boundary samples to cover a highest_k pixel
+    # on the boundary of the main pixel
+    boundary_range = int((marg_pix_res / part_pix_res) * step)
+    pixel_boundaries = hp.vec2dir(hp.boundaries(2**order, pix, step=step, nest=True), lonlat=True)
+
+    if pole == "North":
+        end = len(pixel_boundaries[0])
+        east_ra = pixel_boundaries[0][0:boundary_range+1]
+        east_dec = pixel_boundaries[1][0:boundary_range+1]
+
+        west_ra = pixel_boundaries[0][end-boundary_range:end]
+        west_dec = pixel_boundaries[1][end-boundary_range:end]
+
+        bound_ra = np.concatenate((east_ra, west_ra), axis=None)
+        bound_dec = np.concatenate((east_dec, west_dec), axis=None)
+        polar_boundaries = np.array([bound_ra, bound_dec])
+    else:
+        start = (2 * step) - boundary_range
+        end = (2 * step) + boundary_range + 1
+        south_ra = pixel_boundaries[0][start:end]
+        south_dec = pixel_boundaries[1][start:end]
+        polar_boundaries = np.array([south_ra, south_dec])
+
+    # healpy.boundaries sometimes returns dec values greater than 90, especially
+    # when taking many samples...
+    polar_boundaries[1] = np.clip(polar_boundaries[1], -90., 90.)
+
+    sky_coords = SkyCoord(ra, dec, unit='deg')
+
+    checks = []
+    for i in range(len(polar_boundaries[0])):
+        lon = polar_boundaries[0][i]
+        lat = polar_boundaries[1][i]
+        bound_coord = SkyCoord(lon, lat, unit='deg')
+
+        ang_dist = bound_coord.separation(sky_coords)
+        checks.append(ang_dist <= margin_threshold*u.deg)
+
+    return np.array(checks).any(axis=0)
+
+def is_polar(order, pix):
+    # determines whether or not a a given pixel is one of the polar pixels
+    nside = hp.order2nside(order)
+    npix = hp.nside2npix(nside)
+    ring_pix = hp.nest2ring(nside, pix)
+
+    # in the ring numbering scheme, the first and last 4 pixels are the poles.
+    if ring_pix <= 3:
+        return (True, 'North')
+    elif ring_pix >= npix - 4:
+        return (True, 'South')
+    return (False, '')
+
+def get_truncated_pixels(order, pix, highest_k, pole):
+    # get the polar pixels that will be affected by truncating the declination
+    # for the margin regions. the affected pixels will also be polar pixels.
+    margins = get_margin(order, pix, highest_k - order)
+
+    truncs = []
+
+    for margin_pix in margins:
+        ip, p = is_polar(highest_k, margin_pix)
+        if ip and p == pole:
+            truncs.append(margin_pix)
+
+    return truncs
