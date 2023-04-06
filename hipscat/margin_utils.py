@@ -228,12 +228,7 @@ def get_margin_bounds_and_wcs(k, pix, scale, step=10):
 
     # if the transform places the declination of any points outside of
     # the range 90 > dec > -90, change it to a proper dec value.
-    for i in range(len(transformed_bounding_box[1])):
-        dec = transformed_bounding_box[1][i]
-        if dec > 90.:
-            transformed_bounding_box[1][i] = 90.
-        elif dec < -90.:
-            transformed_bounding_box[1][i] = -90.
+    transformed_bounding_box[1] = np.clip(transformed_bounding_box[1], -90., 90.)
 
 
     min_ra = np.min(transformed_bounding_box[0])
@@ -328,29 +323,24 @@ def check_polar_margin_bounds(ra, dec, order, pix, highest_k, pole, margin_thres
 
         bound_ra = np.concatenate((east_ra, west_ra), axis=None)
         bound_dec = np.concatenate((east_dec, west_dec), axis=None)
-        polar_bounaries = np.array([bound_ra, bound_dec])
+        polar_boundaries = np.array([bound_ra, bound_dec])
     else:
         start = (2 * step) - boundary_range
         end = (2 * step) + boundary_range + 1
         south_ra = pixel_boundaries[0][start:end]
         south_dec = pixel_boundaries[1][start:end]
-        polar_bounaries = np.array([south_ra, south_dec])
+        polar_boundaries = np.array([south_ra, south_dec])
 
     # healpy.boundaries sometimes returns dec values greater than 90, especially
     # when taking many samples...
-    for i in range(len(polar_bounaries[1])):
-        d = polar_bounaries[1][i]
-        if d > 90.:
-            polar_bounaries[1][i] = 90.
-        elif d < -90.:
-            polar_bounaries[1][i] = -90.
+    polar_boundaries[1] = np.clip(polar_boundaries[1], -90., 90.)
 
     sky_coords = SkyCoord(ra, dec, unit='deg')
 
     checks = []
-    for i in range(len(polar_bounaries[0])):
-        lon = polar_bounaries[0][i]
-        lat = polar_bounaries[1][i]
+    for i in range(len(polar_boundaries[0])):
+        lon = polar_boundaries[0][i]
+        lat = polar_boundaries[1][i]
         bound_coord = SkyCoord(lon, lat, unit='deg')
 
         ang_dist = bound_coord.separation(sky_coords)
